@@ -230,6 +230,7 @@ class TriggerType(Enum):
 class PlayerScreenMode(Enum):
     """Anzeigemodus des Spieler-Bildschirms"""
     IMAGE = "image"
+    MAP = "map"
     ROTATING = "rotating"
     TILES = "tiles"
 
@@ -436,8 +437,13 @@ class Location:
     # Farbfilter
     color_filter: Optional[str] = None
     color_filter_opacity: float = 0.3
+    # Ort-Typ (fuer farbige Kartenmarker)
+    location_type: str = "city"  # city, river, mountain, forest, building, anomaly, ship
     # Items an diesem Ort
     items: List[str] = field(default_factory=list)
+    # Versteckte NPCs an diesem Ort
+    hidden_npcs: Dict[str, dict] = field(default_factory=dict)
+    # Format: {char_id: {"encounter_probability": 0.5, "hostile": True, "trigger": "on_enter"}}
     # Preisliste (für Shops/Tavernen)
     price_list_file: Optional[str] = None
     # Zusaetzliche Bilder (Galerie)
@@ -479,9 +485,13 @@ class Weapon:
     required_level: int = 1
     required_strength: int = 0
     required_skills: List[str] = field(default_factory=list)
+    # Kritisch
+    critical_multiplier: float = 2.0
+    critical_threshold: int = 20  # Ab welchem Wuerfelergebnis
+    range_type: str = "melee"  # "melee", "ranged", "magic"
     # Beschreibung
     description: str = ""
-    
+
     def to_dict(self) -> Dict:
         d = asdict(self)
         d['damage_type'] = self.damage_type.value
@@ -611,6 +621,7 @@ class Character:
     image_path: Optional[str] = None
     # Spielzuordnung
     is_npc: bool = False
+    npc_type: str = "neutral"  # "friendly", "neutral", "hostile"
     player_name: Optional[str] = None
     group_id: Optional[str] = None
     # Bedürfnisse
@@ -795,6 +806,8 @@ class Item:
     health_bonus: int = 0
     strength_bonus: int = 0
     other_bonuses: Dict[str, int] = field(default_factory=dict)
+    # Waffen-Verknuepfung
+    weapon_id: Optional[str] = None  # Wenn gesetzt, ist dieses Item eine Waffe
     # Ort-Bindung (fuer versteckte Items an Orten)
     location_id: Optional[str] = None
     owner_id: Optional[str] = None
@@ -883,6 +896,9 @@ class World:
     typical_items: Dict[str, Item] = field(default_factory=dict)
     # Fahrzeuge
     vehicles: Dict[str, Vehicle] = field(default_factory=dict)
+    # Faehigkeiten (pro Welt definierbar)
+    skill_definitions: Dict[str, dict] = field(default_factory=dict)
+    # Format: {"Schwertkampf": {"max_level": 10, "affects": {"strength": 2}, "description": "...", "can_learn_spells_at": 0}}
     # Karte
     map_image: Optional[str] = None
     
@@ -904,6 +920,7 @@ class World:
             'item_classes': self.item_classes,
             'typical_items': {k: v.to_dict() for k, v in self.typical_items.items()},
             'vehicles': {k: v.to_dict() for k, v in self.vehicles.items()},
+            'skill_definitions': self.skill_definitions,
             'map_image': self.map_image
         }
     
@@ -926,6 +943,7 @@ class World:
             item_classes=data.get('item_classes', []),
             typical_items={k: Item.from_dict(v) for k, v in data.get('typical_items', {}).items()},
             vehicles={k: Vehicle.from_dict(v) for k, v in data.get('vehicles', {}).items()},
+            skill_definitions=data.get('skill_definitions', {}),
             map_image=data.get('map_image')
         )
 
@@ -2620,23 +2638,40 @@ class CharacterMarker(QGraphicsEllipseItem):
 
 
 class LocationMarker(QGraphicsEllipseItem):
-    """Klickbarer Ort-Marker auf der Karte"""
+    """Verschiebbarer Ort-Marker auf der Karte mit Farbschema nach Typ"""
 
-    def __init__(self, loc_id: str, loc_name: str, x: float, y: float):
-        super().__init__(-8, -8, 16, 16)
+    TYPE_COLORS = {
+        "city": ("#e74c3c", "#c0392b"),       # Rot - Welten/Planeten/Staedte
+        "river": ("#3498db", "#2980b9"),       # Blau - Fluesse
+        "anomaly": ("#3498db", "#2980b9"),     # Blau - Raumanomalien
+        "mountain": ("#95a5a6", "#7f8c8d"),    # Grau - Berge/Regionen
+        "region": ("#95a5a6", "#7f8c8d"),      # Grau
+        "forest": ("#2ecc71", "#27ae60"),      # Gruen - Waelder
+        "building": ("#f1c40f", "#f39c12"),    # Gelb - Gebaeude
+        "ship": ("#f1c40f", "#f39c12"),        # Gelb - Raumschiffe
+    }
+
+    def __init__(self, loc_id: str, loc_name: str, x: float, y: float, loc_type: str = "city"):
+        super().__init__(-6, -6, 12, 12)
         self.loc_id = loc_id
         self.loc_name = loc_name
-        self.setBrush(QBrush(QColor("#e67e22")))
-        self.setPen(QPen(QColor("#f39c12"), 2))
+        self.loc_type = loc_type
+        colors = self.TYPE_COLORS.get(loc_type, ("#e67e22", "#f39c12"))
+        fill_color, border_color = colors
+        self.setBrush(QBrush(QColor(fill_color)))
+        self.setPen(QPen(QColor(border_color), 1.5))
+        self.setFlag(QGraphicsEllipseItem.ItemIsMovable, True)
+        self.setFlag(QGraphicsEllipseItem.ItemIsSelectable, True)
+        self.setFlag(QGraphicsEllipseItem.ItemSendsGeometryChanges, True)
         self.setPos(x, y)
         self.setZValue(5)
-        self.setToolTip(loc_name)
+        self.setToolTip(f"{loc_name} ({loc_type})")
 
         self._label = QGraphicsTextItem(loc_name, self)
-        self._label.setDefaultTextColor(QColor("#f39c12"))
+        self._label.setDefaultTextColor(QColor(fill_color))
         font = QFont("Arial", 8)
         self._label.setFont(font)
-        self._label.setPos(-len(loc_name) * 3, 10)
+        self._label.setPos(8, -8)  # Namenszug rechts neben dem Punkt
 
 
 class MapWidget(QWidget):
@@ -2647,10 +2682,11 @@ class MapWidget(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._setup_ui()
         self._char_markers: Dict[str, CharacterMarker] = {}
         self._loc_markers: Dict[str, LocationMarker] = {}
         self._map_pixmap_item: Optional[QGraphicsPixmapItem] = None
+        self._grid_lines = []
+        self._setup_ui()
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
@@ -2661,12 +2697,26 @@ class MapWidget(QWidget):
 
         self.view = QGraphicsView(self.scene)
         self.view.setRenderHint(QPainter.Antialiasing)
-        self.view.setDragMode(QGraphicsView.ScrollHandDrag)
-        self.view.setStyleSheet("QGraphicsView { border: none; }")
+        # RubberBandDrag erlaubt Item-Dragging UND Selektion
+        self.view.setDragMode(QGraphicsView.RubberBandDrag)
+        self.view.setStyleSheet("QGraphicsView { border: none; background: #0a0a1a; }")
+        self.view.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)
+        self.view.setResizeAnchor(QGraphicsView.AnchorUnderMouse)
+        self.view.setInteractive(True)
         layout.addWidget(self.view)
 
+    def wheelEvent(self, event):
+        """Zoom mit Mausrad"""
+        factor = 1.15 if event.angleDelta().y() > 0 else 1.0 / 1.15
+        self.view.scale(factor, factor)
+
     def load_map(self, map_path: str):
-        """Laedt ein Kartenbild als Hintergrund"""
+        """Laedt ein Kartenbild als Hintergrund oder zeigt Grid"""
+        # Alte Grid-Linien entfernen
+        for line in self._grid_lines:
+            self.scene.removeItem(line)
+        self._grid_lines.clear()
+
         if self._map_pixmap_item:
             self.scene.removeItem(self._map_pixmap_item)
             self._map_pixmap_item = None
@@ -2676,30 +2726,46 @@ class MapWidget(QWidget):
             self._map_pixmap_item = self.scene.addPixmap(pixmap)
             self._map_pixmap_item.setZValue(0)
             self.scene.setSceneRect(QRectF(pixmap.rect()))
-            self.view.fitInView(self.scene.sceneRect(), Qt.KeepAspectRatio)
         else:
-            # Leere Karte mit Grid
-            self.scene.setSceneRect(QRectF(0, 0, 800, 600))
-            pen = QPen(QColor("#222"), 1)
-            for x in range(0, 801, 50):
-                self.scene.addLine(x, 0, x, 600, pen)
-            for y in range(0, 601, 50):
-                self.scene.addLine(0, y, 800, y, pen)
+            # Grid-Karte wenn kein Bild
+            w, h = 1200, 900
+            self.scene.setSceneRect(QRectF(0, 0, w, h))
+            pen = QPen(QColor("#1a1a2e"), 1)
+            for x in range(0, w + 1, 50):
+                line = self.scene.addLine(x, 0, x, h, pen)
+                line.setZValue(0)
+                self._grid_lines.append(line)
+            for y in range(0, h + 1, 50):
+                line = self.scene.addLine(0, y, w, y, pen)
+                line.setZValue(0)
+                self._grid_lines.append(line)
+            # Dickere Hauptlinien alle 200px
+            pen_major = QPen(QColor("#2a2a3e"), 2)
+            for x in range(0, w + 1, 200):
+                line = self.scene.addLine(x, 0, x, h, pen_major)
+                line.setZValue(1)
+                self._grid_lines.append(line)
+            for y in range(0, h + 1, 200):
+                line = self.scene.addLine(0, y, w, y, pen_major)
+                line.setZValue(1)
+                self._grid_lines.append(line)
+
+        self.view.fitInView(self.scene.sceneRect(), Qt.KeepAspectRatio)
 
     def set_characters(self, characters: Dict[str, Any]):
         """Setzt Charakter-Marker auf die Karte"""
-        # Alte Marker entfernen
         for marker in self._char_markers.values():
             self.scene.removeItem(marker)
         self._char_markers.clear()
 
         colors = [QColor("#e74c3c"), QColor("#2ecc71"), QColor("#3498db"),
                   QColor("#9b59b6"), QColor("#f1c40f"), QColor("#1abc9c")]
+        rect = self.scene.sceneRect()
+        cx, cy = rect.width() / 2, rect.height() / 2
         for i, (char_id, data) in enumerate(characters.items()):
             color = colors[i % len(colors)]
-            # Position aus map_position oder Standard-Verteilung
-            x = data.get("map_x", 100 + i * 60)
-            y = data.get("map_y", 100)
+            x = data.get("map_x", cx - 100 + i * 60)
+            y = data.get("map_y", cy)
             marker = CharacterMarker(char_id, data.get("name", "?"), color, x, y)
             self.scene.addItem(marker)
             self._char_markers[char_id] = marker
@@ -2710,10 +2776,19 @@ class MapWidget(QWidget):
             self.scene.removeItem(marker)
         self._loc_markers.clear()
 
-        for loc_id, data in locations.items():
+        rect = self.scene.sceneRect()
+        default_spacing = 100
+        for i, (loc_id, data) in enumerate(locations.items()):
             pos = data.get("map_position", (0, 0))
-            x, y = pos if isinstance(pos, (list, tuple)) and len(pos) >= 2 else (0, 0)
-            marker = LocationMarker(loc_id, data.get("name", "?"), float(x), float(y))
+            if isinstance(pos, (list, tuple)) and len(pos) >= 2:
+                x, y = float(pos[0]), float(pos[1])
+            else:
+                x, y = 0.0, 0.0
+            # Wenn Position (0,0) ist, verteile automatisch
+            if x == 0 and y == 0:
+                x = 100 + (i % 6) * default_spacing
+                y = 100 + (i // 6) * default_spacing
+            marker = LocationMarker(loc_id, data.get("name", "?"), x, y, data.get("location_type", "city"))
             self.scene.addItem(marker)
             self._loc_markers[loc_id] = marker
 
@@ -2791,22 +2866,26 @@ class PlayerScreen(QMainWindow):
         self.image_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.image_label.setStyleSheet("QLabel { background-color: #0a0a1a; font-size: 48px; color: #333; }")
         self.image_label.setText("RPX")
-        self.mode_stack.addWidget(self.image_label)
+        self.mode_stack.addWidget(self.image_label)  # Index 0
 
-        # === Page 1: ROTATING-Modus ===
+        # === Page 1: MAP-Modus (interaktive Karte) ===
+        self.ps_map_widget = MapWidget()
+        self.mode_stack.addWidget(self.ps_map_widget)  # Index 1
+
+        # === Page 2: ROTATING-Modus ===
         self.rotating_stack = QStackedWidget()
         self._build_rotating_pages()
-        self.mode_stack.addWidget(self.rotating_stack)
+        self.mode_stack.addWidget(self.rotating_stack)  # Index 2
 
-        # === Page 2: TILES-Modus ===
+        # === Page 3: TILES-Modus ===
         self.tiles_widget = QWidget()
         self._build_tiles_layout()
-        self.mode_stack.addWidget(self.tiles_widget)
+        self.mode_stack.addWidget(self.tiles_widget)  # Index 3
 
-        # === Page 3: EVENT-Overlay ===
+        # === Page 4: EVENT-Overlay ===
         self.event_widget = QWidget()
         self._build_event_overlay()
-        self.mode_stack.addWidget(self.event_widget)
+        self.mode_stack.addWidget(self.event_widget)  # Index 4
 
         # Lichteffekt-Overlay
         self.light_manager.set_target(self.mode_stack)
@@ -2882,11 +2961,10 @@ class PlayerScreen(QMainWindow):
         rot_miss_layout.addWidget(rot_miss_scroll)
         self.rotating_stack.addWidget(self.rot_missions_widget)
 
-        # Sub-Page 2: Karte
-        self.rot_map_label = QLabel("Keine Karte geladen")
-        self.rot_map_label.setAlignment(Qt.AlignCenter)
-        self.rot_map_label.setStyleSheet("background-color: #0a0a1a; color: #555; font-size: 24px;")
-        self.rotating_stack.addWidget(self.rot_map_label)
+        # Sub-Page 2: Karte (interaktives MapWidget)
+        self.rot_map_widget = MapWidget()
+        self.rot_map_widget.setStyleSheet("background-color: #0a0a1a;")
+        self.rotating_stack.addWidget(self.rot_map_widget)
 
         # Sub-Page 3: Chat
         self.rot_chat_widget = QWidget()
@@ -3047,18 +3125,21 @@ class PlayerScreen(QMainWindow):
     def set_mode(self, mode: PlayerScreenMode):
         """Setzt den Anzeigemodus"""
         self._mode = mode
+        self._rotation_timer.stop()
         if mode == PlayerScreenMode.IMAGE:
             self.mode_stack.setCurrentIndex(0)
-            self._rotation_timer.stop()
             self.mode_label.setText("Bild")
-        elif mode == PlayerScreenMode.ROTATING:
+        elif mode == PlayerScreenMode.MAP:
             self.mode_stack.setCurrentIndex(1)
+            self._refresh_map_widget()
+            self.mode_label.setText("Karte")
+        elif mode == PlayerScreenMode.ROTATING:
+            self.mode_stack.setCurrentIndex(2)
             self._refresh_rotating_content()
             self._rotation_timer.start(self._rotation_interval)
             self.mode_label.setText("Rotation")
         elif mode == PlayerScreenMode.TILES:
-            self.mode_stack.setCurrentIndex(2)
-            self._rotation_timer.stop()
+            self.mode_stack.setCurrentIndex(3)
             self._refresh_tiles_content()
             self.mode_label.setText("Kacheln")
 
@@ -3189,12 +3270,32 @@ class PlayerScreen(QMainWindow):
         target_layout.addStretch()
 
     def _refresh_map_display(self):
-        if self._map_path and Path(self._map_path).exists():
-            pix = QPixmap(self._map_path)
-            pix = pix.scaled(self.rot_map_label.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
-            self.rot_map_label.setPixmap(pix)
-        else:
-            self.rot_map_label.setText("Keine Karte geladen")
+        """Aktualisiert die Karten-Seite in der Rotation mit dem MapWidget"""
+        self.rot_map_widget.load_map(self._map_path if self._map_path else None)
+        if self._characters_data:
+            chars = {}
+            for i, char_data in enumerate(self._characters_data):
+                cid = char_data.get("id", f"char_{i}")
+                chars[cid] = {
+                    "name": char_data.get("name", "?"),
+                    "map_x": 50 + i * 60,
+                    "map_y": 50
+                }
+            self.rot_map_widget.set_characters(chars)
+
+    def _refresh_map_widget(self):
+        """Aktualisiert das Karten-MapWidget im MAP-Modus"""
+        self.ps_map_widget.load_map(self._map_path if self._map_path else None)
+        if self._characters_data:
+            chars = {}
+            for i, char_data in enumerate(self._characters_data):
+                cid = char_data.get("id", f"char_{i}")
+                chars[cid] = {
+                    "name": char_data.get("name", "?"),
+                    "map_x": 50 + i * 60,
+                    "map_y": 50
+                }
+            self.ps_map_widget.set_characters(chars)
 
     def _refresh_chat_display_browser(self, browser: QTextBrowser):
         html = "<div style='font-family: monospace;'>"
@@ -3369,7 +3470,7 @@ class PlayerScreen(QMainWindow):
 
         # Aktuellen Modus-Index merken und zum Event wechseln
         self._prev_mode_index = self.mode_stack.currentIndex()
-        self.mode_stack.setCurrentIndex(3)
+        self.mode_stack.setCurrentIndex(4)
 
         # Auto-Hide Timer
         dur = duration_ms if duration_ms > 0 else self._event_duration
@@ -3601,11 +3702,17 @@ class RPXProMainWindow(QMainWindow):
         
         layout.addWidget(locations_group)
         
+        # Faehigkeiten
+        skills_btn = QPushButton("Faehigkeiten definieren...")
+        skills_btn.setStyleSheet("QPushButton { background: #3498db; color: white; }")
+        skills_btn.clicked.connect(self._edit_skill_definitions)
+        layout.addWidget(skills_btn)
+
         # Speichern
-        save_btn = QPushButton("💾 Welt speichern")
+        save_btn = QPushButton("Welt speichern")
         save_btn.clicked.connect(self.save_world)
         layout.addWidget(save_btn)
-        
+
         # Welten laden
         self.refresh_world_list()
         
@@ -3721,9 +3828,32 @@ class RPXProMainWindow(QMainWindow):
         dice_layout.addWidget(self.dice_result_label)
         
         layout.addWidget(dice_group)
-        
+
+        # === Kampf-Angriff ===
+        attack_group = QGroupBox("Angriff (mit Waffen-Interpretation)")
+        attack_group.setStyleSheet("QGroupBox { font-weight: bold; border: 2px solid #e74c3c; border-radius: 5px; margin-top: 5px; padding-top: 12px; } QGroupBox::title { color: #e74c3c; }")
+        attack_layout = QVBoxLayout(attack_group)
+        att_row = QHBoxLayout()
+        att_row.addWidget(QLabel("Angreifer:"))
+        self.attacker_combo = QComboBox()
+        att_row.addWidget(self.attacker_combo, stretch=1)
+        att_row.addWidget(QLabel("Verteidiger:"))
+        self.defender_combo = QComboBox()
+        att_row.addWidget(self.defender_combo, stretch=1)
+        attack_layout.addLayout(att_row)
+        attack_btn = QPushButton("Angriff wuerfeln!")
+        attack_btn.setMinimumHeight(40)
+        attack_btn.setStyleSheet("QPushButton { background: #e74c3c; color: white; font-size: 14px; font-weight: bold; }")
+        attack_btn.clicked.connect(self._execute_attack)
+        attack_layout.addWidget(attack_btn)
+        self.attack_result_label = QLabel("")
+        self.attack_result_label.setWordWrap(True)
+        self.attack_result_label.setStyleSheet("font-size: 13px; color: #eee; padding: 5px;")
+        attack_layout.addWidget(self.attack_result_label)
+        layout.addWidget(attack_group)
+
         # Waffen
-        weapons_group = QGroupBox("⚔️ Waffen")
+        weapons_group = QGroupBox("Waffen")
         weapons_layout = QVBoxLayout(weapons_group)
         self.weapons_list = QListWidget()
         weapons_layout.addWidget(self.weapons_list)
@@ -3836,6 +3966,11 @@ class RPXProMainWindow(QMainWindow):
         give_item_btn.setStyleSheet("QPushButton { background: #27ae60; color: white; }")
         item_btn_layout.addWidget(give_item_btn)
 
+        create_weapon_btn = QPushButton("Waffe erstellen...")
+        create_weapon_btn.clicked.connect(self._create_weapon_item)
+        create_weapon_btn.setStyleSheet("QPushButton { background: #e74c3c; color: white; }")
+        item_btn_layout.addWidget(create_weapon_btn)
+
         lib_layout.addLayout(item_btn_layout)
         splitter.addWidget(lib_group)
 
@@ -3868,6 +4003,35 @@ class RPXProMainWindow(QMainWindow):
 
         loc_layout.addLayout(loc_btn_layout)
         splitter.addWidget(loc_group)
+
+        # === NPCs an Orten ===
+        npc_loc_group = QGroupBox("NPCs an Orten (versteckt/Begegnung)")
+        npc_loc_group.setStyleSheet("QGroupBox { font-weight: bold; border: 2px solid #e67e22; border-radius: 5px; margin-top: 5px; padding-top: 12px; } QGroupBox::title { color: #e67e22; }")
+        npc_loc_layout = QVBoxLayout(npc_loc_group)
+
+        npc_loc_select = QHBoxLayout()
+        npc_loc_select.addWidget(QLabel("Ort:"))
+        self.npc_location_combo = QComboBox()
+        self.npc_location_combo.currentIndexChanged.connect(self._refresh_location_npcs)
+        npc_loc_select.addWidget(self.npc_location_combo, stretch=1)
+        npc_loc_layout.addLayout(npc_loc_select)
+
+        self.loc_npcs_table = QTableWidget()
+        self.loc_npcs_table.setColumnCount(4)
+        self.loc_npcs_table.setHorizontalHeaderLabels(["NPC", "Begegnungswahrsch. %", "Feindlich", "Trigger"])
+        self.loc_npcs_table.horizontalHeader().setStretchLastSection(True)
+        self.loc_npcs_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        npc_loc_layout.addWidget(self.loc_npcs_table)
+
+        npc_loc_btn_layout = QHBoxLayout()
+        place_npc_btn = QPushButton("NPC hier platzieren...")
+        place_npc_btn.clicked.connect(self._place_npc_at_location)
+        npc_loc_btn_layout.addWidget(place_npc_btn)
+        remove_npc_btn = QPushButton("Entfernen")
+        remove_npc_btn.clicked.connect(self._remove_npc_from_location)
+        npc_loc_btn_layout.addWidget(remove_npc_btn)
+        npc_loc_layout.addLayout(npc_loc_btn_layout)
+        splitter.addWidget(npc_loc_group)
 
         layout.addWidget(splitter)
         return widget
@@ -3915,6 +4079,14 @@ class RPXProMainWindow(QMainWindow):
             for loc_id, loc in world.locations.items():
                 self.inv_location_combo.addItem(loc.name, loc_id)
         self.inv_location_combo.blockSignals(False)
+        # NPC-Ort-Combo aktualisieren
+        if hasattr(self, 'npc_location_combo'):
+            self.npc_location_combo.blockSignals(True)
+            self.npc_location_combo.clear()
+            if world:
+                for loc_id, loc in world.locations.items():
+                    self.npc_location_combo.addItem(loc.name, loc_id)
+            self.npc_location_combo.blockSignals(False)
 
     def _refresh_location_items(self):
         """Zeigt Items am ausgewaehlten Ort"""
@@ -4181,6 +4353,185 @@ class RPXProMainWindow(QMainWindow):
                 self.data_manager.save_world(world)
                 self._refresh_location_items()
 
+    def _refresh_location_npcs(self):
+        """Aktualisiert die NPC-an-Ort Tabelle"""
+        if not hasattr(self, 'loc_npcs_table'):
+            return
+        world = self.data_manager.current_world
+        session = self.data_manager.current_session
+        self.loc_npcs_table.setRowCount(0)
+        if not world:
+            return
+        loc_id = self.npc_location_combo.currentData()
+        if not loc_id or loc_id not in world.locations:
+            return
+        loc = world.locations[loc_id]
+        npcs = loc.hidden_npcs
+        self.loc_npcs_table.setRowCount(len(npcs))
+        for row, (char_id, npc_data) in enumerate(npcs.items()):
+            name = char_id
+            if session and char_id in session.characters:
+                name = session.characters[char_id].name
+            self.loc_npcs_table.setItem(row, 0, QTableWidgetItem(name))
+            prob = npc_data.get("encounter_probability", 1.0) * 100
+            self.loc_npcs_table.setItem(row, 1, QTableWidgetItem(f"{prob:.0f}%"))
+            self.loc_npcs_table.setItem(row, 2, QTableWidgetItem("Ja" if npc_data.get("hostile") else "Nein"))
+            self.loc_npcs_table.setItem(row, 3, QTableWidgetItem(npc_data.get("trigger", "on_enter")))
+
+    def _place_npc_at_location(self):
+        """Platziert einen NPC an einem Ort"""
+        world = self.data_manager.current_world
+        session = self.data_manager.current_session
+        if not world or not session:
+            QMessageBox.warning(self, "Fehler", "Keine Welt/Session geladen!")
+            return
+        loc_id = self.npc_location_combo.currentData()
+        if not loc_id or loc_id not in world.locations:
+            QMessageBox.warning(self, "Fehler", "Kein Ort ausgewaehlt!")
+            return
+        # NPC auswaehlen
+        npcs = [(cid, c) for cid, c in session.characters.items() if c.is_npc]
+        if not npcs:
+            QMessageBox.information(self, "Info", "Keine NPCs vorhanden. Erstelle zuerst einen NPC-Charakter.")
+            return
+        npc_names = [f"{c.name} ({c.npc_type})" for _, c in npcs]
+        name, ok = QInputDialog.getItem(self, "NPC platzieren", "NPC auswaehlen:", npc_names, 0, False)
+        if not ok:
+            return
+        idx = npc_names.index(name)
+        char_id = npcs[idx][0]
+        # Begegnungswahrscheinlichkeit
+        prob, ok = QInputDialog.getInt(self, "Wahrscheinlichkeit", "Begegnungswahrscheinlichkeit (0-100%):", 50, 0, 100)
+        if not ok:
+            return
+        loc = world.locations[loc_id]
+        hostile = npcs[idx][1].npc_type == "hostile"
+        loc.hidden_npcs[char_id] = {
+            "encounter_probability": prob / 100.0,
+            "hostile": hostile,
+            "trigger": "on_enter"
+        }
+        self.data_manager.save_world(world)
+        self._refresh_location_npcs()
+
+    def _remove_npc_from_location(self):
+        """Entfernt einen NPC vom Ort"""
+        world = self.data_manager.current_world
+        if not world:
+            return
+        row = self.loc_npcs_table.currentRow()
+        if row < 0:
+            return
+        loc_id = self.npc_location_combo.currentData()
+        if not loc_id or loc_id not in world.locations:
+            return
+        loc = world.locations[loc_id]
+        npc_ids = list(loc.hidden_npcs.keys())
+        if row < len(npc_ids):
+            del loc.hidden_npcs[npc_ids[row]]
+            self.data_manager.save_world(world)
+            self._refresh_location_npcs()
+
+    def _create_weapon_item(self):
+        """Erstellt eine Waffe als Item + Weapon gleichzeitig"""
+        world = self.data_manager.current_world
+        if not world:
+            QMessageBox.warning(self, "Fehler", "Keine Welt geladen!")
+            return
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Waffe erstellen")
+        dialog.setMinimumWidth(400)
+        dlayout = QVBoxLayout(dialog)
+        form = QFormLayout()
+        name_edit = QLineEdit()
+        form.addRow("Name:", name_edit)
+        desc_edit = QLineEdit()
+        form.addRow("Beschreibung:", desc_edit)
+        dmg_min_spin = QSpinBox()
+        dmg_min_spin.setRange(0, 9999)
+        dmg_min_spin.setValue(1)
+        form.addRow("Min. Schaden:", dmg_min_spin)
+        dmg_max_spin = QSpinBox()
+        dmg_max_spin.setRange(0, 9999)
+        dmg_max_spin.setValue(10)
+        form.addRow("Max. Schaden:", dmg_max_spin)
+        accuracy_slider = QSlider(Qt.Horizontal)
+        accuracy_slider.setRange(0, 100)
+        accuracy_slider.setValue(80)
+        acc_label = QLabel("80%")
+        accuracy_slider.valueChanged.connect(lambda v: acc_label.setText(f"{v}%"))
+        acc_layout = QHBoxLayout()
+        acc_layout.addWidget(accuracy_slider)
+        acc_layout.addWidget(acc_label)
+        form.addRow("Genauigkeit:", acc_layout)
+        crit_thresh_spin = QSpinBox()
+        crit_thresh_spin.setRange(1, 100)
+        crit_thresh_spin.setValue(20)
+        form.addRow("Krit. Schwelle (W20):", crit_thresh_spin)
+        crit_mult_spin = QDoubleSpinBox()
+        crit_mult_spin.setRange(1.0, 10.0)
+        crit_mult_spin.setValue(2.0)
+        crit_mult_spin.setSingleStep(0.5)
+        form.addRow("Krit. Multiplikator:", crit_mult_spin)
+        range_combo = QComboBox()
+        range_combo.addItem("Nahkampf", "melee")
+        range_combo.addItem("Fernkampf", "ranged")
+        range_combo.addItem("Magie", "magic")
+        form.addRow("Reichweite:", range_combo)
+        weight_spin = QDoubleSpinBox()
+        weight_spin.setRange(0, 999)
+        weight_spin.setValue(1.0)
+        weight_spin.setSuffix(" kg")
+        form.addRow("Gewicht:", weight_spin)
+        value_spin = QSpinBox()
+        value_spin.setRange(0, 999999)
+        value_spin.setValue(10)
+        form.addRow("Wert:", value_spin)
+        dlayout.addLayout(form)
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        dlayout.addWidget(buttons)
+
+        if dialog.exec() == QDialog.Accepted:
+            wname = name_edit.text().strip()
+            if not wname:
+                return
+            wid = str(uuid.uuid4())[:8]
+            # Weapon erstellen
+            weapon = Weapon(
+                id=wid, name=wname, description=desc_edit.text(),
+                damage_min=dmg_min_spin.value(), damage_max=dmg_max_spin.value(),
+                damage_avg=(dmg_min_spin.value() + dmg_max_spin.value()) // 2,
+                accuracy=accuracy_slider.value() / 100.0,
+                critical_threshold=crit_thresh_spin.value(),
+                critical_multiplier=crit_mult_spin.value(),
+                range_type=range_combo.currentData() or "melee"
+            )
+            world.weapons[wid] = weapon
+            # Item erstellen (verknuepft mit Weapon)
+            item = Item(
+                id=wid, name=wname, item_class="Waffe",
+                item_subclass=range_combo.currentText(),
+                description=desc_edit.text(),
+                weight=weight_spin.value(), value=value_spin.value(),
+                stackable=False, weapon_id=wid
+            )
+            world.typical_items[wid] = item
+            self.data_manager.save_world(world)
+            self.refresh_items_table()
+            self._refresh_weapons_list()
+
+    def _refresh_weapons_list(self):
+        """Aktualisiert die Waffenliste im Kampf-Tab"""
+        if not hasattr(self, 'weapons_list'):
+            return
+        self.weapons_list.clear()
+        world = self.data_manager.current_world
+        if world:
+            for wid, weapon in world.weapons.items():
+                self.weapons_list.addItem(f"{weapon.name} ({weapon.damage_min}-{weapon.damage_max} Schaden)")
+
     def create_immersion_tab(self) -> QWidget:
         """Erstellt den Immersion-Tab"""
         widget = QWidget()
@@ -4364,6 +4715,7 @@ class RPXProMainWindow(QMainWindow):
         mode_layout.addWidget(QLabel("Anzeigemodus:"))
         self.ps_mode_combo = QComboBox()
         self.ps_mode_combo.addItem("Bild", PlayerScreenMode.IMAGE.value)
+        self.ps_mode_combo.addItem("Kartenansicht", PlayerScreenMode.MAP.value)
         self.ps_mode_combo.addItem("Rotierende Ansicht", PlayerScreenMode.ROTATING.value)
         self.ps_mode_combo.addItem("Kachelansicht", PlayerScreenMode.TILES.value)
         self.ps_mode_combo.currentIndexChanged.connect(self._on_ps_mode_changed)
@@ -4537,6 +4889,16 @@ class RPXProMainWindow(QMainWindow):
         # Karte
         if world and world.map_image:
             self.player_screen._map_path = world.map_image
+            # Im MAP-Modus das Karten-Widget aktualisieren
+            if self.player_screen._mode == PlayerScreenMode.MAP:
+                self.player_screen._refresh_map_widget()
+            # Auch Ort-Marker fuer die Karten-Widgets bereitstellen
+            if world.locations:
+                locs = {}
+                for loc_id, loc in world.locations.items():
+                    locs[loc_id] = {"name": loc.name, "map_position": loc.map_position, "location_type": loc.location_type}
+                self.player_screen.ps_map_widget.set_locations(locs)
+                self.player_screen.rot_map_widget.set_locations(locs)
 
         # Runden-Info
         if session.is_round_based and session.turn_order:
@@ -4869,6 +5231,116 @@ class RPXProMainWindow(QMainWindow):
             session.chat_history.append(message)
             self.data_manager.save_session(session)
             logger.info(f"Nachricht: [{message.role.value}] {message.author}: {message.content[:50]}...")
+        # Chat-Befehle verarbeiten
+        if message.content.startswith("/"):
+            self._process_chat_command(message.content)
+
+    def _process_chat_command(self, content: str):
+        """Verarbeitet Chat-Befehle wie /roll, /attack, /heal, /damage, /check, /give"""
+        session = self.data_manager.current_session
+        world = self.data_manager.current_world
+        parts = content.strip().split()
+        cmd = parts[0].lower()
+        args = parts[1:]
+        result = None
+
+        try:
+            if cmd == "/roll" and args:
+                # /roll 2W20
+                dice_str = args[0].upper()
+                if "W" in dice_str:
+                    count_str, sides_str = dice_str.split("W", 1)
+                    count = int(count_str) if count_str else 1
+                    sides = int(sides_str)
+                    rolls = [random.randint(1, sides) for _ in range(count)]
+                    total = sum(rolls)
+                    result = f"Wuerfel {count}W{sides}: [{', '.join(map(str, rolls))}] = {total}"
+
+            elif cmd == "/heal" and len(args) >= 2:
+                # /heal Name Betrag
+                name = args[0]
+                amount = int(args[1])
+                char = self._find_char_by_name(name)
+                if char:
+                    char.health = min(char.max_health, char.health + amount)
+                    result = f"{char.name} wurde um {amount} geheilt. HP: {char.health}/{char.max_health}"
+                    self.refresh_character_table()
+                    self.refresh_character_panel()
+                else:
+                    result = f"Charakter '{name}' nicht gefunden."
+
+            elif cmd == "/damage" and len(args) >= 2:
+                # /damage Name Betrag
+                name = args[0]
+                amount = int(args[1])
+                char = self._find_char_by_name(name)
+                if char:
+                    char.health = max(0, char.health - amount)
+                    result = f"{char.name} erleidet {amount} Schaden. HP: {char.health}/{char.max_health}"
+                    if char.health <= 0:
+                        result += f" - {char.name} ist BESIEGT!"
+                    self.refresh_character_table()
+                    self.refresh_character_panel()
+                else:
+                    result = f"Charakter '{name}' nicht gefunden."
+
+            elif cmd == "/check" and len(args) >= 2:
+                # /check Name Skill [Schwierigkeit]
+                name = args[0]
+                skill_name = args[1]
+                difficulty = int(args[2]) if len(args) > 2 else 10
+                char = self._find_char_by_name(name)
+                if char:
+                    skill_val = char.skills.get(skill_name, 0)
+                    roll = random.randint(1, 20)
+                    total = roll + skill_val
+                    success = total >= difficulty
+                    result = (f"Faehigkeitsprobe: {char.name} - {skill_name} (Wert: {skill_val})\n"
+                              f"W20 = {roll} + {skill_val} = {total} vs. Schwierigkeit {difficulty}: "
+                              f"{'ERFOLG!' if success else 'FEHLSCHLAG!'}")
+                else:
+                    result = f"Charakter '{name}' nicht gefunden."
+
+            elif cmd == "/give" and len(args) >= 2:
+                # /give Item Charakter
+                item_name = args[0]
+                char_name = args[1]
+                char = self._find_char_by_name(char_name)
+                if char and world:
+                    item = None
+                    for iid, it in world.typical_items.items():
+                        if it.name.lower() == item_name.lower():
+                            item = it
+                            break
+                    if item:
+                        char.inventory[item.id] = char.inventory.get(item.id, 0) + 1
+                        result = f"{char.name} erhaelt: {item.name}"
+                    else:
+                        result = f"Item '{item_name}' nicht gefunden."
+                else:
+                    result = f"Charakter '{char_name}' nicht gefunden."
+
+            else:
+                result = f"Unbekannter Befehl: {cmd}. Verfuegbar: /roll, /heal, /damage, /check, /give"
+
+        except (ValueError, IndexError) as e:
+            result = f"Fehler bei Befehl {cmd}: {e}"
+
+        if result:
+            msg = ChatMessage(role=MessageRole.SYSTEM, author="System", content=result)
+            self.chat_widget.add_message(msg)
+            if session:
+                session.chat_history.append(msg)
+
+    def _find_char_by_name(self, name: str) -> Optional['Character']:
+        """Findet einen Charakter anhand des Namens (case-insensitive)"""
+        session = self.data_manager.current_session
+        if not session:
+            return None
+        for char in session.characters.values():
+            if char.name.lower() == name.lower():
+                return char
+        return None
     
     def on_world_changed(self, index):
         """Wird aufgerufen wenn eine andere Welt ausgewählt wird"""
@@ -5100,7 +5572,18 @@ class RPXProMainWindow(QMainWindow):
             self.char_table.setItem(row, 4, QTableWidgetItem(str(char.level)))
             self.char_table.setItem(row, 5, QTableWidgetItem(f"{char.health}/{char.max_health}"))
             self.char_table.setItem(row, 6, QTableWidgetItem("✓" if char.is_npc else "✗"))
-    
+        # Kampf-Combos aktualisieren
+        if hasattr(self, 'attacker_combo'):
+            self.attacker_combo.blockSignals(True)
+            self.defender_combo.blockSignals(True)
+            self.attacker_combo.clear()
+            self.defender_combo.clear()
+            for cid, char in session.characters.items():
+                self.attacker_combo.addItem(char.name, cid)
+                self.defender_combo.addItem(char.name, cid)
+            self.attacker_combo.blockSignals(False)
+            self.defender_combo.blockSignals(False)
+
     def add_mission(self):
         """Fügt eine neue Mission hinzu"""
         session = self.data_manager.current_session
@@ -5189,6 +5672,107 @@ class RPXProMainWindow(QMainWindow):
         if session:
             session.chat_history.append(msg)
     
+    def _execute_attack(self):
+        """Fuehrt einen Angriff mit Waffen-Interpretation aus"""
+        session = self.data_manager.current_session
+        world = self.data_manager.current_world
+        if not session or not world:
+            QMessageBox.warning(self, "Fehler", "Keine Session/Welt geladen!")
+            return
+        att_id = self.attacker_combo.currentData()
+        def_id = self.defender_combo.currentData()
+        if not att_id or not def_id:
+            return
+        if att_id == def_id:
+            QMessageBox.warning(self, "Fehler", "Angreifer und Verteidiger muessen verschieden sein!")
+            return
+        attacker = session.characters.get(att_id)
+        defender = session.characters.get(def_id)
+        if not attacker or not defender:
+            return
+
+        # Waffe des Angreifers
+        weapon = None
+        if attacker.equipped_weapon and attacker.equipped_weapon in world.weapons:
+            weapon = world.weapons[attacker.equipped_weapon]
+
+        # Trefferprobe: W20
+        hit_roll = random.randint(1, 20)
+        accuracy = weapon.accuracy if weapon else 0.5
+        hit_threshold = max(1, int(20 - accuracy * 20))
+        is_hit = hit_roll >= hit_threshold
+
+        # Skill-Bonus auf Trefferwurf
+        skill_bonus = 0
+        if world.skill_definitions:
+            for skill_name, skill_def in world.skill_definitions.items():
+                affects = skill_def.get("affects", {})
+                if "strength" in affects or "dexterity" in affects:
+                    skill_val = attacker.skills.get(skill_name, 0)
+                    skill_bonus += skill_val
+
+        lines = [f"--- ANGRIFF: {attacker.name} -> {defender.name} ---"]
+        weapon_name = weapon.name if weapon else "Unbewaffnet"
+        lines.append(f"Waffe: {weapon_name}")
+        lines.append(f"Trefferwurf: W20 = {hit_roll} (+ Skill {skill_bonus}) vs. Schwelle {hit_threshold}")
+
+        effective_roll = hit_roll + skill_bonus
+        is_hit = effective_roll >= hit_threshold
+
+        if not is_hit:
+            lines.append("Ergebnis: VERFEHLT!")
+            result_text = "\n".join(lines)
+        else:
+            # Schadensberechnung
+            if weapon:
+                base_dmg = random.randint(weapon.damage_min, weapon.damage_max)
+                crit = hit_roll >= weapon.critical_threshold
+                if crit:
+                    base_dmg = int(base_dmg * weapon.critical_multiplier)
+                    lines.append(f"KRITISCHER TREFFER! (x{weapon.critical_multiplier})")
+            else:
+                base_dmg = random.randint(1, 4)
+                crit = hit_roll >= 20
+
+            # Staerke-Bonus
+            str_bonus = (attacker.strength - 10) // 2
+            total_dmg = max(0, base_dmg + str_bonus)
+
+            # Ruestungsabzug
+            armor_def = 0
+            if defender.equipped_armor and defender.equipped_armor in world.armors:
+                armor = world.armors[defender.equipped_armor]
+                armor_def = armor.defense_bonus
+            final_dmg = max(0, total_dmg - armor_def)
+
+            defender.health = max(0, defender.health - final_dmg)
+            lines.append(f"Schaden: {base_dmg} (Basis) + {str_bonus} (Staerke) - {armor_def} (Ruestung) = {final_dmg}")
+            lines.append(f"{defender.name}: {defender.health}/{defender.max_health} HP")
+            if defender.health <= 0:
+                lines.append(f"{defender.name} ist BESIEGT!")
+            result_text = "\n".join(lines)
+
+        self.attack_result_label.setText(result_text)
+
+        # Chat loggen
+        msg = ChatMessage(role=MessageRole.SYSTEM, author="Kampf", content=result_text)
+        self.chat_widget.add_message(msg)
+        if session:
+            session.chat_history.append(msg)
+
+        # UI aktualisieren
+        self.refresh_character_table()
+        self.refresh_character_panel()
+
+        # PlayerScreen Event
+        if is_hit:
+            self._route_to_player_screen(PlayerEvent(
+                event_type="character_damaged",
+                data={"char_id": def_id, "name": defender.name, "damage": final_dmg,
+                      "health": defender.health, "max_health": defender.max_health},
+                source_tab="combat"
+            ))
+
     def end_turn(self):
         """Beendet den aktuellen Zug"""
         session = self.data_manager.current_session
@@ -5563,6 +6147,83 @@ class RPXProMainWindow(QMainWindow):
             # Zum Ortsansicht-Tab wechseln
             self.tabs.setCurrentWidget(self.location_view)
 
+    def _edit_skill_definitions(self):
+        """Dialog zum Definieren von Faehigkeiten fuer die aktuelle Welt"""
+        world = self.data_manager.current_world
+        if not world:
+            QMessageBox.warning(self, "Fehler", "Keine Welt geladen!")
+            return
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Faehigkeiten definieren")
+        dialog.setMinimumSize(500, 400)
+        dlayout = QVBoxLayout(dialog)
+
+        dlayout.addWidget(QLabel("Definiere Faehigkeiten fuer diese Welt.\nJede Faehigkeit hat ein Max-Level und Auswirkungen auf Attribute."))
+
+        # Tabelle mit bestehenden Skills
+        table = QTableWidget()
+        table.setColumnCount(5)
+        table.setHorizontalHeaderLabels(["Name", "Max-Level", "Staerke/Lvl", "Leben/Lvl", "Beschreibung"])
+        table.horizontalHeader().setStretchLastSection(True)
+        skills = world.skill_definitions
+        table.setRowCount(len(skills))
+        for row, (sname, sdef) in enumerate(skills.items()):
+            table.setItem(row, 0, QTableWidgetItem(sname))
+            table.setItem(row, 1, QTableWidgetItem(str(sdef.get("max_level", 10))))
+            affects = sdef.get("affects", {})
+            table.setItem(row, 2, QTableWidgetItem(str(affects.get("strength", 0))))
+            table.setItem(row, 3, QTableWidgetItem(str(affects.get("health", 0))))
+            table.setItem(row, 4, QTableWidgetItem(sdef.get("description", "")))
+        dlayout.addWidget(table)
+
+        btn_layout = QHBoxLayout()
+        add_btn = QPushButton("Hinzufuegen")
+        def _add_skill():
+            row = table.rowCount()
+            table.setRowCount(row + 1)
+            table.setItem(row, 0, QTableWidgetItem("Neue Faehigkeit"))
+            table.setItem(row, 1, QTableWidgetItem("10"))
+            table.setItem(row, 2, QTableWidgetItem("0"))
+            table.setItem(row, 3, QTableWidgetItem("0"))
+            table.setItem(row, 4, QTableWidgetItem(""))
+        add_btn.clicked.connect(_add_skill)
+        btn_layout.addWidget(add_btn)
+
+        del_btn = QPushButton("Zeile loeschen")
+        def _del_skill():
+            row = table.currentRow()
+            if row >= 0:
+                table.removeRow(row)
+        del_btn.clicked.connect(_del_skill)
+        btn_layout.addWidget(del_btn)
+        dlayout.addLayout(btn_layout)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        dlayout.addWidget(buttons)
+
+        if dialog.exec() == QDialog.Accepted:
+            new_skills = {}
+            for row in range(table.rowCount()):
+                name_item = table.item(row, 0)
+                if not name_item or not name_item.text().strip():
+                    continue
+                sname = name_item.text().strip()
+                max_lvl = int(table.item(row, 1).text()) if table.item(row, 1) else 10
+                str_per_lvl = int(table.item(row, 2).text()) if table.item(row, 2) else 0
+                hp_per_lvl = int(table.item(row, 3).text()) if table.item(row, 3) else 0
+                desc = table.item(row, 4).text() if table.item(row, 4) else ""
+                affects = {}
+                if str_per_lvl:
+                    affects["strength"] = str_per_lvl
+                if hp_per_lvl:
+                    affects["health"] = hp_per_lvl
+                new_skills[sname] = {"max_level": max_lvl, "affects": affects, "description": desc}
+            world.skill_definitions = new_skills
+            self.data_manager.save_world(world)
+            self.status_bar.showMessage(f"{len(new_skills)} Faehigkeiten gespeichert")
+
     def edit_location(self):
         """Bearbeitet den ausgewählten Ort"""
         world = self.data_manager.current_world
@@ -5590,6 +6251,16 @@ class RPXProMainWindow(QMainWindow):
         desc_edit.setPlainText(loc.description)
         desc_edit.setMaximumHeight(100)
         form.addRow("Beschreibung:", desc_edit)
+
+        loc_type_combo = QComboBox()
+        loc_types = [("city", "Stadt/Planet"), ("river", "Fluss/Anomalie"), ("mountain", "Berg/Region"),
+                     ("forest", "Wald"), ("building", "Gebaeude"), ("ship", "Raumschiff"), ("anomaly", "Anomalie")]
+        for val, label in loc_types:
+            loc_type_combo.addItem(label, val)
+        idx = loc_type_combo.findData(loc.location_type)
+        if idx >= 0:
+            loc_type_combo.setCurrentIndex(idx)
+        form.addRow("Ort-Typ:", loc_type_combo)
 
         has_interior_check = QCheckBox()
         has_interior_check.setChecked(loc.has_interior)
@@ -5631,6 +6302,7 @@ class RPXProMainWindow(QMainWindow):
         if dialog.exec() == QDialog.Accepted:
             loc.name = name_edit.text()
             loc.description = desc_edit.toPlainText()
+            loc.location_type = loc_type_combo.currentData() or "city"
             loc.has_interior = has_interior_check.isChecked()
             loc.exterior_image = ext_edit.text() or None
             loc.interior_image = int_edit.text() or None
@@ -5687,9 +6359,54 @@ class RPXProMainWindow(QMainWindow):
         mana_cur_spin.setRange(0, 9999)
         mana_cur_spin.setValue(char.mana)
         form.addRow("Akt. Mana:", mana_cur_spin)
-        npc_check = QCheckBox()
+        # === NPC-Bereich (prominent) ===
+        npc_group = QGroupBox("NPC-Einstellungen")
+        npc_group.setStyleSheet("QGroupBox { font-weight: bold; border: 2px solid #e67e22; border-radius: 5px; margin-top: 8px; padding-top: 15px; } QGroupBox::title { color: #e67e22; }")
+        npc_layout = QHBoxLayout(npc_group)
+        npc_check = QCheckBox("Ist NPC")
         npc_check.setChecked(char.is_npc)
-        form.addRow("NPC:", npc_check)
+        npc_check.setStyleSheet("font-size: 13px;")
+        npc_layout.addWidget(npc_check)
+        npc_type_combo = QComboBox()
+        npc_type_combo.addItem("Freundlich", "friendly")
+        npc_type_combo.addItem("Neutral", "neutral")
+        npc_type_combo.addItem("Feindlich", "hostile")
+        idx = npc_type_combo.findData(char.npc_type)
+        if idx >= 0:
+            npc_type_combo.setCurrentIndex(idx)
+        npc_type_combo.setEnabled(char.is_npc)
+        npc_check.toggled.connect(npc_type_combo.setEnabled)
+        npc_layout.addWidget(QLabel("Typ:"))
+        npc_layout.addWidget(npc_type_combo)
+        form.addRow(npc_group)
+
+        # === Faehigkeiten (Skills) ===
+        world = self.data_manager.current_world
+        skill_sliders = {}
+        if world and world.skill_definitions:
+            skill_group = QGroupBox("Faehigkeiten")
+            skill_group.setStyleSheet("QGroupBox { font-weight: bold; border: 1px solid #3498db; border-radius: 5px; margin-top: 8px; padding-top: 15px; } QGroupBox::title { color: #3498db; }")
+            skill_layout = QFormLayout(skill_group)
+            for skill_name, skill_def in world.skill_definitions.items():
+                max_lvl = skill_def.get("max_level", 10)
+                cur_val = char.skills.get(skill_name, 0)
+                slider = QSlider(Qt.Horizontal)
+                slider.setRange(0, max_lvl)
+                slider.setValue(cur_val)
+                val_label = QLabel(f"{cur_val}/{max_lvl}")
+                slider.valueChanged.connect(lambda v, lbl=val_label, mx=max_lvl: lbl.setText(f"{v}/{mx}"))
+                row_layout = QHBoxLayout()
+                row_layout.addWidget(slider, stretch=1)
+                row_layout.addWidget(val_label)
+                affects = skill_def.get("affects", {})
+                desc = skill_def.get("description", "")
+                tooltip = desc
+                if affects:
+                    tooltip += " | Bonus: " + ", ".join(f"{k} +{v}/Lvl" for k, v in affects.items())
+                slider.setToolTip(tooltip)
+                skill_layout.addRow(f"{skill_name}:", row_layout)
+                skill_sliders[skill_name] = slider
+            form.addRow(skill_group)
 
         # Charakter-Bild
         img_edit = QLineEdit(char.image_path or "")
@@ -5746,6 +6463,10 @@ class RPXProMainWindow(QMainWindow):
             char.max_mana = mana_spin.value()
             char.mana = mana_cur_spin.value()
             char.is_npc = npc_check.isChecked()
+            char.npc_type = npc_type_combo.currentData() or "neutral"
+            # Skills speichern
+            for skill_name, slider in skill_sliders.items():
+                char.skills[skill_name] = slider.value()
             char.image_path = img_edit.text() or None
             char.biography = bio_edit.toPlainText()
             self.data_manager.save_session(session)
@@ -6042,7 +6763,8 @@ class RPXProMainWindow(QMainWindow):
             for loc_id, loc in world.locations.items():
                 locs[loc_id] = {
                     "name": loc.name,
-                    "map_position": loc.map_position
+                    "map_position": loc.map_position,
+                    "location_type": loc.location_type
                 }
             self.world_map_widget.set_locations(locs)
 
