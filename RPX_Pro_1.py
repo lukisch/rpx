@@ -30,7 +30,7 @@ import random
 import uuid
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Tuple, Callable
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field, asdict, fields as dataclass_fields
 from datetime import datetime
 from enum import Enum
 from functools import partial
@@ -44,15 +44,17 @@ from PySide6.QtWidgets import (
     QDialog, QDialogButtonBox, QTableWidget, QTableWidgetItem, QSlider, 
     QScrollArea, QFrame, QGridLayout, QStatusBar, QMenuBar, QMenu, QToolBar,
     QProgressBar, QStackedWidget, QFormLayout, QTextBrowser, QColorDialog,
-    QInputDialog, QHeaderView, QAbstractItemView, QSizePolicy
+    QInputDialog, QHeaderView, QAbstractItemView, QSizePolicy,
+    QGraphicsScene, QGraphicsView, QGraphicsEllipseItem, QGraphicsTextItem,
+    QGraphicsPixmapItem
 )
 from PySide6.QtCore import (
     Qt, Signal, QThread, QTimer, QSize, Slot, QUrl, QPropertyAnimation,
-    QEasingCurve, Property, QObject
+    QEasingCurve, Property, QObject, QRectF, QPointF
 )
 from PySide6.QtGui import (
     QAction, QIcon, QFont, QColor, QPalette, QPixmap, QTextCursor,
-    QBrush, QPainter, QLinearGradient, QKeySequence, QShortcut
+    QBrush, QPainter, QLinearGradient, QKeySequence, QShortcut, QPen
 )
 
 # ============================================================================
@@ -101,7 +103,9 @@ def _init_audio_backend():
     if _HAS_QMEDIAPLAYER:
         try:
             _test = QMediaPlayer()
-            if _test.isAvailable():
+            # isAvailable() existiert nicht in neueren PySide6-Versionen
+            available = getattr(_test, 'isAvailable', lambda: True)()
+            if available:
                 HAS_AUDIO = True
                 AUDIO_BACKEND = "QtMultimedia"
                 return
@@ -184,6 +188,12 @@ logging.basicConfig(
 )
 logger = logging.getLogger("RPX")
 
+def _filter_dataclass_fields(cls, data: dict) -> dict:
+    """Filtert unbekannte Felder aus einem Dict bevor es an einen Dataclass-Konstruktor übergeben wird."""
+    valid = {f.name for f in dataclass_fields(cls)}
+    return {k: v for k, v in data.items() if k in valid}
+
+
 # ============================================================================
 # ENUMS - Alle Rollen und Status-Typen
 # ============================================================================
@@ -216,6 +226,19 @@ class TriggerType(Enum):
     ON_EVERY_LEAVE = "on_every_leave"
     ON_FIRST_LEAVE = "on_first_leave"
     RANDOM = "random"
+
+class PlayerScreenMode(Enum):
+    """Anzeigemodus des Spieler-Bildschirms"""
+    IMAGE = "image"
+    ROTATING = "rotating"
+    TILES = "tiles"
+
+@dataclass
+class PlayerEvent:
+    """Event das an den Spieler-Bildschirm geroutet wird"""
+    event_type: str
+    data: dict
+    source_tab: str
 
 # ============================================================================
 # AKTIONEN-SAMMLER (NEU für RPX Pro)
@@ -383,8 +406,9 @@ class Trigger:
     
     @classmethod
     def from_dict(cls, data: Dict) -> 'Trigger':
+        data = dict(data)
         data['trigger_type'] = TriggerType(data['trigger_type'])
-        return cls(**data)
+        return cls(**_filter_dataclass_fields(cls, data))
 
 @dataclass
 class Location:
@@ -416,6 +440,10 @@ class Location:
     items: List[str] = field(default_factory=list)
     # Preisliste (für Shops/Tavernen)
     price_list_file: Optional[str] = None
+    # Zusaetzliche Bilder (Galerie)
+    images: List[str] = field(default_factory=list)
+    # Eigene Unter-Karte fuer diesen Ort
+    sub_map: Optional[str] = None
     # Zusätzliche Infos
     actions_available: List[str] = field(default_factory=list)
     metadata: Dict[str, Any] = field(default_factory=dict)
@@ -427,11 +455,12 @@ class Location:
     
     @classmethod
     def from_dict(cls, data: Dict) -> 'Location':
+        data = dict(data)
         if 'triggers' in data:
             data['triggers'] = [Trigger.from_dict(t) if isinstance(t, dict) else t for t in data['triggers']]
         if 'map_position' in data and isinstance(data['map_position'], list):
             data['map_position'] = tuple(data['map_position'])
-        return cls(**data)
+        return cls(**_filter_dataclass_fields(cls, data))
 
 @dataclass
 class Weapon:
@@ -460,9 +489,10 @@ class Weapon:
     
     @classmethod
     def from_dict(cls, data: Dict) -> 'Weapon':
+        data = dict(data)
         if 'damage_type' in data:
             data['damage_type'] = DamageType(data['damage_type'])
-        return cls(**data)
+        return cls(**_filter_dataclass_fields(cls, data))
 
 @dataclass
 class Armor:
@@ -481,7 +511,7 @@ class Armor:
     
     @classmethod
     def from_dict(cls, data: Dict) -> 'Armor':
-        return cls(**data)
+        return cls(**_filter_dataclass_fields(cls, data))
 
 @dataclass
 class CombatTechnique:
@@ -503,7 +533,7 @@ class CombatTechnique:
     
     @classmethod
     def from_dict(cls, data: Dict) -> 'CombatTechnique':
-        return cls(**data)
+        return cls(**_filter_dataclass_fields(cls, data))
 
 @dataclass
 class Spell:
@@ -536,11 +566,12 @@ class Spell:
     
     @classmethod
     def from_dict(cls, data: Dict) -> 'Spell':
+        data = dict(data)
         if 'effect_type' in data:
             data['effect_type'] = SpellEffect(data['effect_type'])
         if 'target_type' in data:
             data['target_type'] = SpellTarget(data['target_type'])
-        return cls(**data)
+        return cls(**_filter_dataclass_fields(cls, data))
 
 @dataclass
 class Character:
@@ -570,7 +601,7 @@ class Character:
     # Ausrüstung
     equipped_weapon: Optional[str] = None
     equipped_armor: Optional[str] = None
-    inventory: List[str] = field(default_factory=list)
+    inventory: Dict[str, int] = field(default_factory=dict)  # item_id -> Anzahl
     # Techniken und Zauber
     combat_techniques: List[str] = field(default_factory=list)
     known_spells: List[str] = field(default_factory=list)
@@ -595,7 +626,12 @@ class Character:
     
     @classmethod
     def from_dict(cls, data: Dict) -> 'Character':
-        return cls(**data)
+        data = dict(data)
+        # Migration: alte inventory List[str] -> Dict[str, int]
+        inv = data.get('inventory', {})
+        if isinstance(inv, list):
+            data['inventory'] = {item_id: 1 for item_id in inv}
+        return cls(**_filter_dataclass_fields(cls, data))
 
 @dataclass
 class Mission:
@@ -626,9 +662,10 @@ class Mission:
     
     @classmethod
     def from_dict(cls, data: Dict) -> 'Mission':
+        data = dict(data)
         if 'status' in data:
             data['status'] = MissionStatus(data['status'])
-        return cls(**data)
+        return cls(**_filter_dataclass_fields(cls, data))
 
 @dataclass
 class PlayerGroup:
@@ -643,7 +680,7 @@ class PlayerGroup:
     
     @classmethod
     def from_dict(cls, data: Dict) -> 'PlayerGroup':
-        return cls(**data)
+        return cls(**_filter_dataclass_fields(cls, data))
 
 @dataclass
 class Vehicle:
@@ -669,7 +706,7 @@ class Vehicle:
     
     @classmethod
     def from_dict(cls, data: Dict) -> 'Vehicle':
-        return cls(**data)
+        return cls(**_filter_dataclass_fields(cls, data))
 
 @dataclass
 class RoadType:
@@ -687,7 +724,7 @@ class RoadType:
     
     @classmethod
     def from_dict(cls, data: Dict) -> 'RoadType':
-        return cls(**data)
+        return cls(**_filter_dataclass_fields(cls, data))
 
 @dataclass
 class Nation:
@@ -712,7 +749,7 @@ class Nation:
     
     @classmethod
     def from_dict(cls, data: Dict) -> 'Nation':
-        return cls(**data)
+        return cls(**_filter_dataclass_fields(cls, data))
 
 @dataclass
 class Race:
@@ -739,31 +776,37 @@ class Race:
     
     @classmethod
     def from_dict(cls, data: Dict) -> 'Race':
-        return cls(**data)
+        return cls(**_filter_dataclass_fields(cls, data))
 
 @dataclass
 class Item:
-    """Gegenstand"""
+    """Gegenstand (Klasse oder Einzelstueck)"""
     id: str
     name: str
-    item_class: str = ""  # Oberklasse
-    item_subclass: str = ""  # Unterklasse
-    is_unique: bool = False  # Besonderes Item (nur einmal)
+    item_class: str = ""         # Oberklasse z.B. "Besteck", "Waffe", "Trank"
+    item_subclass: str = ""      # Unterklasse z.B. "Loeffel", "Schwert"
+    is_unique: bool = False      # Einzelstueck (nur einmal existent)
     description: str = ""
+    weight: float = 0.0          # Gewicht in kg
+    value: int = 0               # Wert in Waehrungseinheit
+    stackable: bool = True       # Stapelbar?
+    max_stack: int = 99
     # Auswirkungen
     health_bonus: int = 0
     strength_bonus: int = 0
     other_bonuses: Dict[str, int] = field(default_factory=dict)
-    # Ort
+    # Ort-Bindung (fuer versteckte Items an Orten)
     location_id: Optional[str] = None
-    owner_id: Optional[str] = None  # Character ID wenn im Besitz
-    
+    owner_id: Optional[str] = None
+    find_probability: float = 1.0  # 0.0-1.0, Fundwahrscheinlichkeit
+    hidden: bool = False
+
     def to_dict(self) -> Dict:
         return asdict(self)
-    
+
     @classmethod
     def from_dict(cls, data: Dict) -> 'Item':
-        return cls(**data)
+        return cls(**_filter_dataclass_fields(cls, data))
 
 @dataclass
 class DiceRule:
@@ -781,10 +824,11 @@ class DiceRule:
     
     @classmethod
     def from_dict(cls, data: Dict) -> 'DiceRule':
+        data = dict(data)
         # Konvertiere ranges Listen zurück zu Tupeln
         if 'ranges' in data:
             data['ranges'] = {k: tuple(v) for k, v in data['ranges'].items()}
-        return cls(**data)
+        return cls(**_filter_dataclass_fields(cls, data))
 
 @dataclass
 class WorldSettings:
@@ -814,7 +858,7 @@ class WorldSettings:
     
     @classmethod
     def from_dict(cls, data: Dict) -> 'WorldSettings':
-        return cls(**data)
+        return cls(**_filter_dataclass_fields(cls, data))
 
 @dataclass
 class World:
@@ -907,6 +951,7 @@ class Session:
     turn_order: List[str] = field(default_factory=list)  # Character IDs
     current_turn_index: int = 0
     actions_per_turn: int = 0  # 0 = unbegrenzt
+    current_round: int = 1
     # Spielleiter
     gm_is_human: bool = True
     gm_player_name: str = ""
@@ -933,6 +978,7 @@ class Session:
             'turn_order': self.turn_order,
             'current_turn_index': self.current_turn_index,
             'actions_per_turn': self.actions_per_turn,
+            'current_round': self.current_round,
             'gm_is_human': self.gm_is_human,
             'gm_player_name': self.gm_player_name,
             'current_location_id': self.current_location_id,
@@ -958,6 +1004,7 @@ class Session:
             turn_order=data.get('turn_order', []),
             current_turn_index=data.get('current_turn_index', 0),
             actions_per_turn=data.get('actions_per_turn', 0),
+            current_round=data.get('current_round', 1),
             gm_is_human=data.get('gm_is_human', True),
             gm_player_name=data.get('gm_player_name', ''),
             current_location_id=data.get('current_location_id'),
@@ -1258,6 +1305,7 @@ class AudioManager:
     
     def __init__(self):
         self.music_player: Optional[QMediaPlayer] = None
+        self.music_output: Optional[QAudioOutput] = None
         self.sound_players: Dict[str, QMediaPlayer] = {}
         self.music_volume = 0.5
         self.sound_volume = 0.7
@@ -1320,14 +1368,24 @@ class AudioManager:
                 output.setVolume(volume or self.sound_volume)
                 player.setSource(QUrl.fromLocalFile(str(path)))
                 player.play()
-                
+
                 # Aufräumen nach Abspielen
                 sound_id = str(uuid.uuid4())[:8]
                 self.sound_players[sound_id] = player
+                player.mediaStatusChanged.connect(
+                    lambda status, sid=sound_id: self._cleanup_sound(sid, status)
+                )
                 logger.info(f"Sound gespielt: {path.name}")
         except Exception as e:
             logger.error(f"Sound-Fehler: {e}")
     
+    def _cleanup_sound(self, sound_id: str, status):
+        """Räumt abgespielte Sound-Player auf"""
+        if status == QMediaPlayer.EndOfMedia:
+            player = self.sound_players.pop(sound_id, None)
+            if player:
+                player.deleteLater()
+
     def set_music_volume(self, volume: float):
         """Setzt Musik-Lautstärke (0.0 - 1.0)"""
         self.music_volume = max(0.0, min(1.0, volume))
@@ -1858,26 +1916,64 @@ class CharacterWidget(QWidget):
             self.avatar_label.setStyleSheet(self.avatar_label.styleSheet() + "font-size: 60px;")
     
     def open_inventory(self):
-        """Öffnet Inventar-Dialog"""
+        """Oeffnet Inventar-Dialog"""
         if not self.character:
             return
-        
+
         dialog = QDialog(self)
         dialog.setWindowTitle(f"Inventar - {self.character.name}")
-        dialog.setMinimumSize(300, 400)
-        
+        dialog.setMinimumSize(400, 500)
+
         layout = QVBoxLayout(dialog)
-        
-        inv_list = QListWidget()
-        for item in self.character.inventory:
-            inv_list.addItem(item)
-        layout.addWidget(inv_list)
-        
-        close_btn = QPushButton("Schließen")
+
+        inv_table = QTableWidget()
+        inv_table.setColumnCount(3)
+        inv_table.setHorizontalHeaderLabels(["Gegenstand", "Anzahl", ""])
+        inv_table.horizontalHeader().setStretchLastSection(True)
+        inv_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+
+        # World-Items fuer Namensaufloesung holen
+        world = None
+        main_win = self.window()
+        if hasattr(main_win, 'data_manager') and main_win.data_manager.current_world:
+            world = main_win.data_manager.current_world
+
+        items = self.character.inventory if isinstance(self.character.inventory, dict) else {}
+        inv_table.setRowCount(len(items))
+        for row, (item_id, count) in enumerate(items.items()):
+            # Name aus World.typical_items oder Item-ID
+            name = item_id
+            if world and item_id in world.typical_items:
+                name = world.typical_items[item_id].name
+            inv_table.setItem(row, 0, QTableWidgetItem(name))
+            inv_table.setItem(row, 1, QTableWidgetItem(str(count)))
+            # Ablegen-Button
+            drop_btn = QPushButton("Ablegen")
+            drop_btn.clicked.connect(partial(self._drop_item, item_id, dialog))
+            inv_table.setCellWidget(row, 2, drop_btn)
+
+        layout.addWidget(inv_table)
+        self._inv_table = inv_table
+        self._inv_dialog = dialog
+
+        close_btn = QPushButton("Schliessen")
         close_btn.clicked.connect(dialog.accept)
         layout.addWidget(close_btn)
-        
+
         dialog.exec()
+
+    def _drop_item(self, item_id: str, dialog: QDialog):
+        """Entfernt ein Item aus dem Inventar"""
+        if item_id in self.character.inventory:
+            self.character.inventory[item_id] -= 1
+            if self.character.inventory[item_id] <= 0:
+                del self.character.inventory[item_id]
+            # Session speichern
+            main_win = self.window()
+            if hasattr(main_win, 'data_manager') and main_win.data_manager.current_session:
+                main_win.data_manager.save_session(main_win.data_manager.current_session)
+            dialog.accept()
+            self.open_inventory()  # Neu oeffnen
 
 
 class LocationViewWidget(QWidget):
@@ -2499,17 +2595,179 @@ class RulesetImportDialog(QDialog):
 # SPIELER-BILDSCHIRM (2. Monitor)
 # ============================================================================
 
+class CharacterMarker(QGraphicsEllipseItem):
+    """Verschiebbarer Charakter-Marker auf der Karte"""
+
+    def __init__(self, char_id: str, char_name: str, color: QColor, x: float, y: float):
+        super().__init__(-12, -12, 24, 24)
+        self.char_id = char_id
+        self.char_name = char_name
+        self.setBrush(QBrush(color))
+        self.setPen(QPen(QColor("#fff"), 2))
+        self.setFlag(QGraphicsEllipseItem.ItemIsMovable, True)
+        self.setFlag(QGraphicsEllipseItem.ItemIsSelectable, True)
+        self.setFlag(QGraphicsEllipseItem.ItemSendsGeometryChanges, True)
+        self.setPos(x, y)
+        self.setZValue(10)
+        self.setToolTip(char_name)
+
+        # Namenslabel
+        self._label = QGraphicsTextItem(char_name, self)
+        self._label.setDefaultTextColor(QColor("#fff"))
+        font = QFont("Arial", 9, QFont.Bold)
+        self._label.setFont(font)
+        self._label.setPos(-len(char_name) * 3, 14)
+
+
+class LocationMarker(QGraphicsEllipseItem):
+    """Klickbarer Ort-Marker auf der Karte"""
+
+    def __init__(self, loc_id: str, loc_name: str, x: float, y: float):
+        super().__init__(-8, -8, 16, 16)
+        self.loc_id = loc_id
+        self.loc_name = loc_name
+        self.setBrush(QBrush(QColor("#e67e22")))
+        self.setPen(QPen(QColor("#f39c12"), 2))
+        self.setPos(x, y)
+        self.setZValue(5)
+        self.setToolTip(loc_name)
+
+        self._label = QGraphicsTextItem(loc_name, self)
+        self._label.setDefaultTextColor(QColor("#f39c12"))
+        font = QFont("Arial", 8)
+        self._label.setFont(font)
+        self._label.setPos(-len(loc_name) * 3, 10)
+
+
+class MapWidget(QWidget):
+    """Interaktive Kartenansicht mit verschiebbaren Markern"""
+
+    location_clicked = Signal(str)  # location_id
+    marker_moved = Signal(str, float, float)  # char_id, x, y
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._setup_ui()
+        self._char_markers: Dict[str, CharacterMarker] = {}
+        self._loc_markers: Dict[str, LocationMarker] = {}
+        self._map_pixmap_item: Optional[QGraphicsPixmapItem] = None
+
+    def _setup_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        self.scene = QGraphicsScene(self)
+        self.scene.setBackgroundBrush(QBrush(QColor("#0a0a1a")))
+
+        self.view = QGraphicsView(self.scene)
+        self.view.setRenderHint(QPainter.Antialiasing)
+        self.view.setDragMode(QGraphicsView.ScrollHandDrag)
+        self.view.setStyleSheet("QGraphicsView { border: none; }")
+        layout.addWidget(self.view)
+
+    def load_map(self, map_path: str):
+        """Laedt ein Kartenbild als Hintergrund"""
+        if self._map_pixmap_item:
+            self.scene.removeItem(self._map_pixmap_item)
+            self._map_pixmap_item = None
+
+        if map_path and Path(map_path).exists():
+            pixmap = QPixmap(map_path)
+            self._map_pixmap_item = self.scene.addPixmap(pixmap)
+            self._map_pixmap_item.setZValue(0)
+            self.scene.setSceneRect(QRectF(pixmap.rect()))
+            self.view.fitInView(self.scene.sceneRect(), Qt.KeepAspectRatio)
+        else:
+            # Leere Karte mit Grid
+            self.scene.setSceneRect(QRectF(0, 0, 800, 600))
+            pen = QPen(QColor("#222"), 1)
+            for x in range(0, 801, 50):
+                self.scene.addLine(x, 0, x, 600, pen)
+            for y in range(0, 601, 50):
+                self.scene.addLine(0, y, 800, y, pen)
+
+    def set_characters(self, characters: Dict[str, Any]):
+        """Setzt Charakter-Marker auf die Karte"""
+        # Alte Marker entfernen
+        for marker in self._char_markers.values():
+            self.scene.removeItem(marker)
+        self._char_markers.clear()
+
+        colors = [QColor("#e74c3c"), QColor("#2ecc71"), QColor("#3498db"),
+                  QColor("#9b59b6"), QColor("#f1c40f"), QColor("#1abc9c")]
+        for i, (char_id, data) in enumerate(characters.items()):
+            color = colors[i % len(colors)]
+            # Position aus map_position oder Standard-Verteilung
+            x = data.get("map_x", 100 + i * 60)
+            y = data.get("map_y", 100)
+            marker = CharacterMarker(char_id, data.get("name", "?"), color, x, y)
+            self.scene.addItem(marker)
+            self._char_markers[char_id] = marker
+
+    def set_locations(self, locations: Dict[str, Any]):
+        """Setzt Ort-Marker auf die Karte"""
+        for marker in self._loc_markers.values():
+            self.scene.removeItem(marker)
+        self._loc_markers.clear()
+
+        for loc_id, data in locations.items():
+            pos = data.get("map_position", (0, 0))
+            x, y = pos if isinstance(pos, (list, tuple)) and len(pos) >= 2 else (0, 0)
+            marker = LocationMarker(loc_id, data.get("name", "?"), float(x), float(y))
+            self.scene.addItem(marker)
+            self._loc_markers[loc_id] = marker
+
+    def get_character_positions(self) -> Dict[str, Tuple[float, float]]:
+        """Gibt die aktuellen Positionen aller Charakter-Marker zurueck"""
+        positions = {}
+        for char_id, marker in self._char_markers.items():
+            pos = marker.pos()
+            positions[char_id] = (pos.x(), pos.y())
+        return positions
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if self.scene.sceneRect().width() > 0:
+            self.view.fitInView(self.scene.sceneRect(), Qt.KeepAspectRatio)
+
+
 class PlayerScreen(QMainWindow):
-    """Separates Fenster fuer den Spieler-Bildschirm (2. Monitor)"""
+    """Separates Fenster fuer den Spieler-Bildschirm (2. Monitor) mit mehreren Anzeigemodi"""
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("RPX - Spieler-Ansicht")
         self.setWindowFlags(Qt.Window)
-        self._current_view = "location"  # "location", "map", "black"
+        self._current_view = "location"
+        self._mode = PlayerScreenMode.IMAGE
+        self._prev_mode_index = 0  # Fuer Event-Overlay Rueckkehr
 
         # Eigener LightEffectManager fuer diesen Bildschirm
         self.light_manager = LightEffectManager()
+
+        # Daten-Cache fuer Rotating/Tiles
+        self._characters_data: Dict[str, Any] = {}
+        self._missions_data: List[Any] = []
+        self._chat_data: List[str] = []
+        self._turn_info: Dict[str, Any] = {}
+        self._map_path: Optional[str] = None
+        self._background_path: Optional[str] = None
+
+        # Timer fuer rotierende Ansicht
+        self._rotation_timer = QTimer(self)
+        self._rotation_timer.timeout.connect(self._rotate_next)
+        self._rotation_interval = 15000  # ms
+
+        # Timer fuer Event-Overlay Auto-Hide
+        self._event_timer = QTimer(self)
+        self._event_timer.setSingleShot(True)
+        self._event_timer.timeout.connect(self._hide_event_overlay)
+        self._event_duration = 4000  # ms
+
+        # Timer fuer Charakter-Highlight
+        self._highlight_timer = QTimer(self)
+        self._highlight_timer.setSingleShot(True)
+        self._highlight_timers: Dict[str, QTimer] = {}
 
         self._setup_ui()
         self._apply_theme()
@@ -2517,21 +2775,41 @@ class PlayerScreen(QMainWindow):
     def _setup_ui(self):
         central = QWidget()
         self.setCentralWidget(central)
-        layout = QVBoxLayout(central)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
+        main_layout = QVBoxLayout(central)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
 
-        # Bildanzeige (nimmt den Grossteil ein)
+        # Haupt-Stack fuer die verschiedenen Modi
+        self.mode_stack = QStackedWidget()
+        self.mode_stack.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        main_layout.addWidget(self.mode_stack, stretch=1)
+
+        # === Page 0: IMAGE-Modus (bisheriges Verhalten) ===
         self.image_label = QLabel()
         self.image_label.setAlignment(Qt.AlignCenter)
         self.image_label.setMinimumSize(800, 600)
         self.image_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.image_label.setStyleSheet("QLabel { background-color: #0a0a1a; }")
+        self.image_label.setStyleSheet("QLabel { background-color: #0a0a1a; font-size: 48px; color: #333; }")
         self.image_label.setText("RPX")
-        layout.addWidget(self.image_label, stretch=1)
+        self.mode_stack.addWidget(self.image_label)
 
-        # Lichteffekt-Overlay auf dem Bild
-        self.light_manager.set_target(self.image_label)
+        # === Page 1: ROTATING-Modus ===
+        self.rotating_stack = QStackedWidget()
+        self._build_rotating_pages()
+        self.mode_stack.addWidget(self.rotating_stack)
+
+        # === Page 2: TILES-Modus ===
+        self.tiles_widget = QWidget()
+        self._build_tiles_layout()
+        self.mode_stack.addWidget(self.tiles_widget)
+
+        # === Page 3: EVENT-Overlay ===
+        self.event_widget = QWidget()
+        self._build_event_overlay()
+        self.mode_stack.addWidget(self.event_widget)
+
+        # Lichteffekt-Overlay
+        self.light_manager.set_target(self.mode_stack)
 
         # Statusleiste unten
         status_widget = QWidget()
@@ -2546,20 +2824,392 @@ class PlayerScreen(QMainWindow):
 
         status_layout.addStretch()
 
+        self.mode_label = QLabel("")
+        self.mode_label.setStyleSheet("color: #3498db; font-size: 12px;")
+        status_layout.addWidget(self.mode_label)
+
         self.weather_label = QLabel("")
-        self.weather_label.setStyleSheet("color: #95a5a6; font-size: 13px;")
+        self.weather_label.setStyleSheet("color: #95a5a6; font-size: 13px; margin-left: 15px;")
         status_layout.addWidget(self.weather_label)
 
         self.time_label = QLabel("")
         self.time_label.setStyleSheet("color: #f1c40f; font-size: 13px; margin-left: 15px;")
         status_layout.addWidget(self.time_label)
 
-        layout.addWidget(status_widget)
+        main_layout.addWidget(status_widget)
+
+    # --- Rotierende Ansicht aufbauen ---
+
+    def _build_rotating_pages(self):
+        """Erstellt die Sub-Pages fuer den Rotationsmodus"""
+        page_style = "background-color: #0a0a1a; color: #e0e0e0;"
+
+        # Sub-Page 0: Charakter-Uebersicht
+        self.rot_chars_widget = QWidget()
+        self.rot_chars_widget.setStyleSheet(page_style)
+        rot_chars_layout = QVBoxLayout(self.rot_chars_widget)
+        rot_chars_layout.setContentsMargins(20, 20, 20, 20)
+        rot_chars_title = QLabel("Helden")
+        rot_chars_title.setStyleSheet("font-size: 28px; font-weight: bold; color: #f1c40f; padding: 10px;")
+        rot_chars_title.setAlignment(Qt.AlignCenter)
+        rot_chars_layout.addWidget(rot_chars_title)
+        self.rot_chars_list = QVBoxLayout()
+        rot_chars_container = QWidget()
+        rot_chars_container.setLayout(self.rot_chars_list)
+        rot_scroll = QScrollArea()
+        rot_scroll.setWidget(rot_chars_container)
+        rot_scroll.setWidgetResizable(True)
+        rot_scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
+        rot_chars_layout.addWidget(rot_scroll)
+        self.rotating_stack.addWidget(self.rot_chars_widget)
+
+        # Sub-Page 1: Missions-Uebersicht
+        self.rot_missions_widget = QWidget()
+        self.rot_missions_widget.setStyleSheet(page_style)
+        rot_miss_layout = QVBoxLayout(self.rot_missions_widget)
+        rot_miss_layout.setContentsMargins(20, 20, 20, 20)
+        rot_miss_title = QLabel("Aktive Missionen")
+        rot_miss_title.setStyleSheet("font-size: 28px; font-weight: bold; color: #e67e22; padding: 10px;")
+        rot_miss_title.setAlignment(Qt.AlignCenter)
+        rot_miss_layout.addWidget(rot_miss_title)
+        self.rot_missions_list = QVBoxLayout()
+        rot_miss_container = QWidget()
+        rot_miss_container.setLayout(self.rot_missions_list)
+        rot_miss_scroll = QScrollArea()
+        rot_miss_scroll.setWidget(rot_miss_container)
+        rot_miss_scroll.setWidgetResizable(True)
+        rot_miss_scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
+        rot_miss_layout.addWidget(rot_miss_scroll)
+        self.rotating_stack.addWidget(self.rot_missions_widget)
+
+        # Sub-Page 2: Karte
+        self.rot_map_label = QLabel("Keine Karte geladen")
+        self.rot_map_label.setAlignment(Qt.AlignCenter)
+        self.rot_map_label.setStyleSheet("background-color: #0a0a1a; color: #555; font-size: 24px;")
+        self.rotating_stack.addWidget(self.rot_map_label)
+
+        # Sub-Page 3: Chat
+        self.rot_chat_widget = QWidget()
+        self.rot_chat_widget.setStyleSheet(page_style)
+        rot_chat_layout = QVBoxLayout(self.rot_chat_widget)
+        rot_chat_layout.setContentsMargins(20, 20, 20, 20)
+        rot_chat_title = QLabel("Spielverlauf")
+        rot_chat_title.setStyleSheet("font-size: 28px; font-weight: bold; color: #3498db; padding: 10px;")
+        rot_chat_title.setAlignment(Qt.AlignCenter)
+        rot_chat_layout.addWidget(rot_chat_title)
+        self.rot_chat_text = QTextBrowser()
+        self.rot_chat_text.setStyleSheet(
+            "QTextBrowser { background: #111; color: #ddd; font-size: 16px; border: none; padding: 10px; }")
+        rot_chat_layout.addWidget(self.rot_chat_text)
+        self.rotating_stack.addWidget(self.rot_chat_widget)
+
+    # --- Kachelansicht aufbauen ---
+
+    def _build_tiles_layout(self):
+        """Erstellt das 2x2 Kachel-Grid"""
+        grid = QGridLayout(self.tiles_widget)
+        grid.setContentsMargins(8, 8, 8, 8)
+        grid.setSpacing(8)
+
+        tile_style = """
+            QFrame {{
+                background-color: #111;
+                border: 1px solid #333;
+                border-radius: 8px;
+            }}
+            QLabel {{
+                color: #e0e0e0;
+            }}
+        """
+
+        # Kachel: Charaktere (oben links)
+        chars_tile = QFrame()
+        chars_tile.setStyleSheet(tile_style)
+        chars_tile.setFrameShape(QFrame.StyledPanel)
+        chars_layout = QVBoxLayout(chars_tile)
+        chars_header = QLabel("Helden")
+        chars_header.setStyleSheet("font-size: 18px; font-weight: bold; color: #f1c40f; padding: 5px;")
+        chars_header.setAlignment(Qt.AlignCenter)
+        chars_layout.addWidget(chars_header)
+        self.tile_chars_list = QVBoxLayout()
+        tile_chars_container = QWidget()
+        tile_chars_container.setLayout(self.tile_chars_list)
+        tile_chars_scroll = QScrollArea()
+        tile_chars_scroll.setWidget(tile_chars_container)
+        tile_chars_scroll.setWidgetResizable(True)
+        tile_chars_scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
+        chars_layout.addWidget(tile_chars_scroll)
+        grid.addWidget(chars_tile, 0, 0)
+
+        # Kachel: Missionen (oben rechts)
+        miss_tile = QFrame()
+        miss_tile.setStyleSheet(tile_style)
+        miss_tile.setFrameShape(QFrame.StyledPanel)
+        miss_layout = QVBoxLayout(miss_tile)
+        miss_header = QLabel("Missionen")
+        miss_header.setStyleSheet("font-size: 18px; font-weight: bold; color: #e67e22; padding: 5px;")
+        miss_header.setAlignment(Qt.AlignCenter)
+        miss_layout.addWidget(miss_header)
+        self.tile_missions_list = QVBoxLayout()
+        tile_miss_container = QWidget()
+        tile_miss_container.setLayout(self.tile_missions_list)
+        tile_miss_scroll = QScrollArea()
+        tile_miss_scroll.setWidget(tile_miss_container)
+        tile_miss_scroll.setWidgetResizable(True)
+        tile_miss_scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
+        miss_layout.addWidget(tile_miss_scroll)
+        grid.addWidget(miss_tile, 0, 1)
+
+        # Kachel: Chat (unten links)
+        chat_tile = QFrame()
+        chat_tile.setStyleSheet(tile_style)
+        chat_tile.setFrameShape(QFrame.StyledPanel)
+        chat_layout = QVBoxLayout(chat_tile)
+        chat_header = QLabel("Chat")
+        chat_header.setStyleSheet("font-size: 18px; font-weight: bold; color: #3498db; padding: 5px;")
+        chat_header.setAlignment(Qt.AlignCenter)
+        chat_layout.addWidget(chat_header)
+        self.tile_chat_text = QTextBrowser()
+        self.tile_chat_text.setStyleSheet(
+            "QTextBrowser { background: transparent; color: #ddd; font-size: 13px; border: none; }")
+        chat_layout.addWidget(self.tile_chat_text)
+        grid.addWidget(chat_tile, 1, 0)
+
+        # Kachel: Runden-Info (unten rechts)
+        turn_tile = QFrame()
+        turn_tile.setStyleSheet(tile_style)
+        turn_tile.setFrameShape(QFrame.StyledPanel)
+        turn_layout = QVBoxLayout(turn_tile)
+        turn_header = QLabel("Rundensteuerung")
+        turn_header.setStyleSheet("font-size: 18px; font-weight: bold; color: #9b59b6; padding: 5px;")
+        turn_header.setAlignment(Qt.AlignCenter)
+        turn_layout.addWidget(turn_header)
+        self.tile_round_label = QLabel("Runde: -")
+        self.tile_round_label.setStyleSheet("font-size: 24px; font-weight: bold; color: #f1c40f; padding: 10px;")
+        self.tile_round_label.setAlignment(Qt.AlignCenter)
+        turn_layout.addWidget(self.tile_round_label)
+        self.tile_current_turn = QLabel("Aktuell: -")
+        self.tile_current_turn.setStyleSheet("font-size: 20px; color: #2ecc71; padding: 5px;")
+        self.tile_current_turn.setAlignment(Qt.AlignCenter)
+        turn_layout.addWidget(self.tile_current_turn)
+        self.tile_turn_order = QListWidget()
+        self.tile_turn_order.setStyleSheet(
+            "QListWidget { background: transparent; color: #ccc; font-size: 14px; border: none; }"
+            "QListWidget::item { padding: 4px; }"
+            "QListWidget::item:selected { background: #333; }")
+        turn_layout.addWidget(self.tile_turn_order)
+        grid.addWidget(turn_tile, 1, 1)
+
+    # --- Event-Overlay aufbauen ---
+
+    def _build_event_overlay(self):
+        """Erstellt das temporaere Event-Anzeige-Widget"""
+        layout = QVBoxLayout(self.event_widget)
+        layout.setContentsMargins(0, 0, 0, 0)
+        self.event_widget.setStyleSheet("background-color: #0a0a1a;")
+
+        layout.addStretch()
+        self.event_icon_label = QLabel("")
+        self.event_icon_label.setAlignment(Qt.AlignCenter)
+        self.event_icon_label.setStyleSheet("font-size: 72px;")
+        layout.addWidget(self.event_icon_label)
+
+        self.event_text_label = QLabel("")
+        self.event_text_label.setAlignment(Qt.AlignCenter)
+        self.event_text_label.setWordWrap(True)
+        self.event_text_label.setStyleSheet("font-size: 36px; font-weight: bold; color: #fff; padding: 20px;")
+        layout.addWidget(self.event_text_label)
+
+        self.event_sub_label = QLabel("")
+        self.event_sub_label.setAlignment(Qt.AlignCenter)
+        self.event_sub_label.setStyleSheet("font-size: 20px; color: #aaa; padding: 10px;")
+        layout.addWidget(self.event_sub_label)
+        layout.addStretch()
 
     def _apply_theme(self):
-        self.setStyleSheet("""
-            QMainWindow { background-color: #0a0a1a; }
-        """)
+        self.setStyleSheet("QMainWindow { background-color: #0a0a1a; }")
+
+    def set_background_image(self, path: str):
+        """Setzt ein Hintergrundbild fuer Kachel- und Rotationsansicht"""
+        self._background_path = path
+        if path and Path(path).exists():
+            bg_css = f"background-image: url('{path.replace(chr(92), '/')}'); background-size: cover; background-position: center;"
+            self.tiles_widget.setStyleSheet(f"QWidget#tiles_bg {{ {bg_css} }}")
+            self.tiles_widget.setObjectName("tiles_bg")
+            for i in range(self.rotating_stack.count()):
+                w = self.rotating_stack.widget(i)
+                w.setStyleSheet(f"background: rgba(10,10,26,0.7);")
+        else:
+            self._background_path = None
+
+    # --- Modus-Steuerung ---
+
+    def set_mode(self, mode: PlayerScreenMode):
+        """Setzt den Anzeigemodus"""
+        self._mode = mode
+        if mode == PlayerScreenMode.IMAGE:
+            self.mode_stack.setCurrentIndex(0)
+            self._rotation_timer.stop()
+            self.mode_label.setText("Bild")
+        elif mode == PlayerScreenMode.ROTATING:
+            self.mode_stack.setCurrentIndex(1)
+            self._refresh_rotating_content()
+            self._rotation_timer.start(self._rotation_interval)
+            self.mode_label.setText("Rotation")
+        elif mode == PlayerScreenMode.TILES:
+            self.mode_stack.setCurrentIndex(2)
+            self._rotation_timer.stop()
+            self._refresh_tiles_content()
+            self.mode_label.setText("Kacheln")
+
+    def set_rotation_interval(self, ms: int):
+        self._rotation_interval = max(5000, ms)
+        if self._rotation_timer.isActive():
+            self._rotation_timer.setInterval(self._rotation_interval)
+
+    def set_event_duration(self, ms: int):
+        self._event_duration = max(1000, ms)
+
+    # --- Rotierende Ansicht ---
+
+    def _rotate_next(self):
+        idx = self.rotating_stack.currentIndex()
+        total = self.rotating_stack.count()
+        self.rotating_stack.setCurrentIndex((idx + 1) % total)
+
+    def _refresh_rotating_content(self):
+        self._refresh_char_display(self.rot_chars_list)
+        self._refresh_missions_display(self.rot_missions_list)
+        self._refresh_map_display()
+        self._refresh_chat_display_browser(self.rot_chat_text)
+
+    def _refresh_tiles_content(self):
+        self._refresh_char_display(self.tile_chars_list)
+        self._refresh_missions_display(self.tile_missions_list)
+        self._refresh_chat_display_browser(self.tile_chat_text)
+        self._refresh_turn_display()
+
+    # --- Gemeinsame Content-Refresh Methoden ---
+
+    def _clear_layout(self, layout):
+        while layout.count():
+            item = layout.takeAt(0)
+            w = item.widget()
+            if w:
+                w.deleteLater()
+
+    def _refresh_char_display(self, target_layout):
+        """Aktualisiert eine Charakter-Liste (fuer Rotation oder Tiles)"""
+        self._clear_layout(target_layout)
+        for char_id, char_data in self._characters_data.items():
+            row = QWidget()
+            row.setObjectName(f"char_row_{char_id}")
+            row_layout = QHBoxLayout(row)
+            row_layout.setContentsMargins(8, 4, 8, 4)
+
+            # Avatar
+            avatar = QLabel()
+            avatar.setFixedSize(50, 50)
+            avatar.setAlignment(Qt.AlignCenter)
+            if char_data.get("image_path") and Path(char_data["image_path"]).exists():
+                pix = QPixmap(char_data["image_path"]).scaled(46, 46, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                avatar.setPixmap(pix)
+            else:
+                avatar.setText("?")
+                avatar.setStyleSheet("font-size: 24px; color: #888; background: #222; border-radius: 25px;")
+            row_layout.addWidget(avatar)
+
+            # Info
+            info_layout = QVBoxLayout()
+            name_lbl = QLabel(char_data.get("name", "?"))
+            name_lbl.setStyleSheet("font-size: 16px; font-weight: bold; color: #fff;")
+            info_layout.addWidget(name_lbl)
+
+            # HP-Bar
+            hp = char_data.get("health", 0)
+            max_hp = char_data.get("max_health", 1)
+            hp_bar = QProgressBar()
+            hp_bar.setRange(0, max_hp)
+            hp_bar.setValue(hp)
+            hp_bar.setFormat(f"{hp}/{max_hp}")
+            hp_bar.setMaximumHeight(16)
+            hp_bar.setStyleSheet("""
+                QProgressBar { background: #333; border: none; border-radius: 3px; text-align: center; color: #fff; font-size: 11px; }
+                QProgressBar::chunk { background: #e74c3c; border-radius: 3px; }
+            """)
+            info_layout.addWidget(hp_bar)
+
+            # Mana-Bar
+            mana = char_data.get("mana", 0)
+            max_mana = char_data.get("max_mana", 0)
+            if max_mana > 0:
+                mana_bar = QProgressBar()
+                mana_bar.setRange(0, max_mana)
+                mana_bar.setValue(mana)
+                mana_bar.setFormat(f"{mana}/{max_mana}")
+                mana_bar.setMaximumHeight(12)
+                mana_bar.setStyleSheet("""
+                    QProgressBar { background: #333; border: none; border-radius: 2px; text-align: center; color: #fff; font-size: 10px; }
+                    QProgressBar::chunk { background: #3498db; border-radius: 2px; }
+                """)
+                info_layout.addWidget(mana_bar)
+
+            row_layout.addLayout(info_layout, stretch=1)
+            row.setStyleSheet("background: #1a1a2e; border-radius: 6px; margin: 2px;")
+            target_layout.addWidget(row)
+
+        target_layout.addStretch()
+
+    def _refresh_missions_display(self, target_layout):
+        """Aktualisiert eine Missions-Liste"""
+        self._clear_layout(target_layout)
+        for mission in self._missions_data:
+            m_widget = QWidget()
+            m_layout = QHBoxLayout(m_widget)
+            m_layout.setContentsMargins(10, 6, 10, 6)
+
+            status_icon = QLabel("!" if mission.get("status") == "active" else "?")
+            status_icon.setStyleSheet("font-size: 20px; color: #e67e22; font-weight: bold;")
+            status_icon.setFixedWidth(30)
+            m_layout.addWidget(status_icon)
+
+            name_lbl = QLabel(mission.get("name", "?"))
+            name_lbl.setStyleSheet("font-size: 16px; color: #fff;")
+            name_lbl.setWordWrap(True)
+            m_layout.addWidget(name_lbl, stretch=1)
+
+            m_widget.setStyleSheet("background: #1a1a2e; border-radius: 6px; margin: 2px;")
+            target_layout.addWidget(m_widget)
+
+        if not self._missions_data:
+            empty = QLabel("Keine aktiven Missionen")
+            empty.setStyleSheet("color: #555; font-size: 16px; padding: 20px;")
+            empty.setAlignment(Qt.AlignCenter)
+            target_layout.addWidget(empty)
+        target_layout.addStretch()
+
+    def _refresh_map_display(self):
+        if self._map_path and Path(self._map_path).exists():
+            pix = QPixmap(self._map_path)
+            pix = pix.scaled(self.rot_map_label.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            self.rot_map_label.setPixmap(pix)
+        else:
+            self.rot_map_label.setText("Keine Karte geladen")
+
+    def _refresh_chat_display_browser(self, browser: QTextBrowser):
+        html = "<div style='font-family: monospace;'>"
+        for msg in self._chat_data[-15:]:
+            html += f"<p style='margin: 3px 0;'>{msg}</p>"
+        html += "</div>"
+        browser.setHtml(html)
+
+    def _refresh_turn_display(self):
+        info = self._turn_info
+        self.tile_round_label.setText(f"Runde: {info.get('round', '-')}")
+        self.tile_current_turn.setText(f"Aktuell: {info.get('current_name', '-')}")
+        self.tile_turn_order.clear()
+        for name in info.get('order_names', []):
+            self.tile_turn_order.addItem(name)
 
     # --- Oeffentliche API fuer GM-Steuerung ---
 
@@ -2571,34 +3221,34 @@ class PlayerScreen(QMainWindow):
         img_path = location.interior_image if interior else location.exterior_image
         if img_path and Path(img_path).exists():
             pixmap = QPixmap(img_path)
-            pixmap = pixmap.scaled(self.image_label.size(),
-                                   Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            pixmap = pixmap.scaled(self.image_label.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
             self.image_label.setPixmap(pixmap)
         else:
             self.image_label.setText(f"{location.name}")
 
-        # Farbfilter uebernehmen
         if location.color_filter:
-            self.light_manager.set_color_filter(location.color_filter,
-                                                 location.color_filter_opacity)
+            self.light_manager.set_color_filter(location.color_filter, location.color_filter_opacity)
         else:
             self.light_manager.clear_filter()
+
+        # Im IMAGE-Modus direkt anzeigen
+        if self._mode == PlayerScreenMode.IMAGE:
+            self.mode_stack.setCurrentIndex(0)
 
     def show_map_image(self, map_path: str):
         """Zeigt eine Karte an"""
         self._current_view = "map"
+        self._map_path = map_path
         if map_path and Path(map_path).exists():
             pixmap = QPixmap(map_path)
-            pixmap = pixmap.scaled(self.image_label.size(),
-                                   Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            pixmap = pixmap.scaled(self.image_label.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
             self.image_label.setPixmap(pixmap)
 
     def show_custom_image(self, image_path: str):
         """Zeigt ein beliebiges Bild an"""
         if image_path and Path(image_path).exists():
             pixmap = QPixmap(image_path)
-            pixmap = pixmap.scaled(self.image_label.size(),
-                                   Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            pixmap = pixmap.scaled(self.image_label.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
             self.image_label.setPixmap(pixmap)
 
     def show_black(self):
@@ -2607,9 +3257,9 @@ class PlayerScreen(QMainWindow):
         self.image_label.clear()
         self.image_label.setStyleSheet("QLabel { background-color: #000000; }")
         self.light_manager.clear_filter()
+        self.mode_stack.setCurrentIndex(0)
 
     def update_weather(self, weather: str):
-        """Aktualisiert die Wetteranzeige"""
         weather_icons = {
             "clear": "Klar", "cloudy": "Bewoelkt", "rain": "Regen",
             "storm": "Sturm", "snow": "Schnee", "fog": "Nebel"
@@ -2617,7 +3267,6 @@ class PlayerScreen(QMainWindow):
         self.weather_label.setText(weather_icons.get(weather, weather))
 
     def update_time(self, time_of_day: str):
-        """Aktualisiert die Zeitanzeige"""
         time_icons = {
             "dawn": "Morgendaemmerung", "morning": "Morgen", "noon": "Mittag",
             "afternoon": "Nachmittag", "evening": "Abend", "night": "Nacht",
@@ -2631,17 +3280,109 @@ class PlayerScreen(QMainWindow):
             self.light_manager.flash_lightning()
         elif effect_name == "strobe":
             self.light_manager.flash_strobe()
+        elif effect_name == "day":
+            self.light_manager.set_day_night(False)
+        elif effect_name == "night":
+            self.light_manager.set_day_night(True)
+        elif effect_name == "clear":
+            self.light_manager.clear_filter()
+        elif effect_name.startswith("color:"):
+            parts = effect_name.split(":")
+            color = parts[1]
+            opacity = float(parts[2]) if len(parts) > 2 else 0.3
+            self.light_manager.set_color_filter(color, opacity)
 
     def set_day_night(self, is_night: bool, opacity: float = 0.5):
-        """Setzt Tag/Nacht-Effekt"""
         self.light_manager.set_day_night(is_night, opacity)
 
+    # --- Neue API: Daten-Updates ---
+
+    def update_characters(self, characters: Dict[str, Any]):
+        """Aktualisiert die Charakter-Daten und refresht aktive Ansichten"""
+        self._characters_data = characters
+        if self._mode == PlayerScreenMode.ROTATING:
+            self._refresh_char_display(self.rot_chars_list)
+        elif self._mode == PlayerScreenMode.TILES:
+            self._refresh_char_display(self.tile_chars_list)
+
+    def update_missions(self, missions: List[Any]):
+        """Aktualisiert die Missions-Daten"""
+        self._missions_data = missions
+        if self._mode == PlayerScreenMode.ROTATING:
+            self._refresh_missions_display(self.rot_missions_list)
+        elif self._mode == PlayerScreenMode.TILES:
+            self._refresh_missions_display(self.tile_missions_list)
+
+    def update_chat(self, messages: List[str]):
+        """Aktualisiert den Chat-Auszug"""
+        self._chat_data = messages
+        if self._mode == PlayerScreenMode.ROTATING:
+            self._refresh_chat_display_browser(self.rot_chat_text)
+        elif self._mode == PlayerScreenMode.TILES:
+            self._refresh_chat_display_browser(self.tile_chat_text)
+
+    def update_turn_info(self, char_name: str, round_num: int, turn_order: List[str]):
+        """Aktualisiert die Rundeninformation"""
+        self._turn_info = {
+            "current_name": char_name,
+            "round": round_num,
+            "order_names": turn_order
+        }
+        if self._mode == PlayerScreenMode.TILES:
+            self._refresh_turn_display()
+
+    # --- Neue API: Event-Anzeigen ---
+
+    def highlight_character(self, char_id: str, color: str, duration_ms: int = 3000):
+        """Laesst einen Charakter-Eintrag kurz aufleuchten"""
+        # Finde das Charakter-Row Widget
+        for target_layout in [self.rot_chars_list, self.tile_chars_list]:
+            for i in range(target_layout.count()):
+                item = target_layout.itemAt(i)
+                if item and item.widget():
+                    w = item.widget()
+                    if w.objectName() == f"char_row_{char_id}":
+                        original_style = w.styleSheet()
+                        w.setStyleSheet(f"background: {color}; border-radius: 6px; margin: 2px;")
+                        # Timer zum Zuruecksetzen
+                        timer = QTimer(self)
+                        timer.setSingleShot(True)
+                        timer.timeout.connect(lambda wid=w, style=original_style: wid.setStyleSheet(style))
+                        timer.start(duration_ms)
+
+    def show_announcement(self, text: str, icon: str, color: str, duration_ms: int = 0):
+        """Zeigt eine grosse Ankuendigung als Event-Overlay"""
+        icon_map = {
+            "check": "!",
+            "cross": "X",
+            "sword": ">",
+            "shield": "#",
+            "skull": "!",
+            "heart": "+",
+            "dice": "?",
+        }
+        self.event_icon_label.setText(icon_map.get(icon, "!"))
+        self.event_icon_label.setStyleSheet(f"font-size: 72px; color: {color};")
+        self.event_text_label.setText(text)
+        self.event_text_label.setStyleSheet(f"font-size: 36px; font-weight: bold; color: {color}; padding: 20px;")
+        self.event_sub_label.setText("")
+
+        # Aktuellen Modus-Index merken und zum Event wechseln
+        self._prev_mode_index = self.mode_stack.currentIndex()
+        self.mode_stack.setCurrentIndex(3)
+
+        # Auto-Hide Timer
+        dur = duration_ms if duration_ms > 0 else self._event_duration
+        self._event_timer.start(dur)
+
+    def _hide_event_overlay(self):
+        """Kehrt nach Event-Overlay zum vorherigen Modus zurueck"""
+        self.mode_stack.setCurrentIndex(self._prev_mode_index)
+
     def resizeEvent(self, event):
-        """Bild bei Groessenaenderung neu skalieren"""
         super().resizeEvent(event)
-        # Overlay-Groesse anpassen
         if self.light_manager.overlay:
-            self.light_manager.overlay.setGeometry(self.image_label.rect())
+            self.light_manager.overlay.setGeometry(self.mode_stack.rect())
 
 
 # ============================================================================
@@ -2666,6 +3407,7 @@ class RPXProMainWindow(QMainWindow):
         self.setup_toolbar()
         self.apply_dark_theme()
         self._restore_last_session()
+        self._setup_simulation_timer()
 
         logger.info(f"{APP_TITLE} v{VERSION} gestartet")
 
@@ -2688,6 +3430,14 @@ class RPXProMainWindow(QMainWindow):
             session = self.data_manager.sessions[last_session]
             self.data_manager.current_session = session
             self.chat_widget.load_history(session.chat_history)
+            self.refresh_character_table()
+            self.refresh_character_panel()
+            self.refresh_missions_list()
+            self.refresh_combat_lists()
+            self.refresh_items_table()
+            self.refresh_inv_location_combo()
+            self.prompt_widget.update_characters(session.characters)
+            self._load_settings_from_session()
             self.status_bar.showMessage(f"Session geladen: {session.name}")
             logger.info(f"Letzte Session wiederhergestellt: {session.name}")
     
@@ -2740,8 +3490,12 @@ class RPXProMainWindow(QMainWindow):
         # Tab 6: Missionen
         self.missions_tab = self.create_missions_tab()
         self.tabs.addTab(self.missions_tab, "📜 Missionen")
-        
-        # Tab 7: Immersion
+
+        # Tab 7: Inventar
+        self.inventory_tab = self.create_inventory_tab()
+        self.tabs.addTab(self.inventory_tab, "🎒 Inventar")
+
+        # Tab 8: Immersion
         self.immersion_tab = self.create_immersion_tab()
         self.tabs.addTab(self.immersion_tab, "✨ Immersion")
         
@@ -2768,7 +3522,13 @@ class RPXProMainWindow(QMainWindow):
         """Erstellt den Welt-Tab"""
         widget = QWidget()
         layout = QVBoxLayout(widget)
-        
+
+        # PlayerScreen-Filter
+        self.ps_mirror_world = QCheckBox("Auf Spieler-Bildschirm uebertragen")
+        self.ps_mirror_world.setChecked(True)
+        self.ps_mirror_world.setStyleSheet("color: #3498db; font-size: 11px;")
+        layout.addWidget(self.ps_mirror_world)
+
         # Welt-Auswahl
         select_layout = QHBoxLayout()
         select_layout.addWidget(QLabel("Aktive Welt:"))
@@ -2796,21 +3556,46 @@ class RPXProMainWindow(QMainWindow):
         info_layout.addRow("Beschreibung:", self.world_desc_edit)
         
         layout.addWidget(info_group)
-        
+
+        # Karte
+        map_group = QGroupBox("Weltkarte")
+        map_layout = QHBoxLayout(map_group)
+        self.map_path_label = QLabel("Keine Karte hinterlegt")
+        self.map_path_label.setStyleSheet("color: #888;")
+        map_layout.addWidget(self.map_path_label, stretch=1)
+
+        set_map_btn = QPushButton("🗺️ Karte laden...")
+        set_map_btn.clicked.connect(self.set_world_map)
+        map_layout.addWidget(set_map_btn)
+
+        clear_map_btn = QPushButton("Entfernen")
+        clear_map_btn.clicked.connect(self.clear_world_map)
+        map_layout.addWidget(clear_map_btn)
+
+        layout.addWidget(map_group)
+
+        # Interaktive Kartenansicht
+        self.world_map_widget = MapWidget()
+        self.world_map_widget.setMaximumHeight(300)
+        self.world_map_widget.location_clicked.connect(self.on_location_tree_clicked)
+        layout.addWidget(self.world_map_widget)
+
         # Orte
         locations_group = QGroupBox("Orte")
         loc_layout = QVBoxLayout(locations_group)
         
         self.locations_tree = QTreeWidget()
         self.locations_tree.setHeaderLabels(["Name", "Innenansicht", "Trigger"])
+        self.locations_tree.itemClicked.connect(self.on_location_tree_clicked)
         loc_layout.addWidget(self.locations_tree)
-        
+
         loc_btn_layout = QHBoxLayout()
         add_loc_btn = QPushButton("➕ Ort hinzufügen")
         add_loc_btn.clicked.connect(self.add_location)
         loc_btn_layout.addWidget(add_loc_btn)
-        
+
         edit_loc_btn = QPushButton("✏️ Bearbeiten")
+        edit_loc_btn.clicked.connect(self.edit_location)
         loc_btn_layout.addWidget(edit_loc_btn)
         loc_layout.addLayout(loc_btn_layout)
         
@@ -2830,7 +3615,13 @@ class RPXProMainWindow(QMainWindow):
         """Erstellt den Charaktere-Tab"""
         widget = QWidget()
         layout = QVBoxLayout(widget)
-        
+
+        # PlayerScreen-Filter
+        self.ps_mirror_characters = QCheckBox("Auf Spieler-Bildschirm uebertragen")
+        self.ps_mirror_characters.setChecked(True)
+        self.ps_mirror_characters.setStyleSheet("color: #3498db; font-size: 11px;")
+        layout.addWidget(self.ps_mirror_characters)
+
         # Charakterliste
         self.char_table = QTableWidget()
         self.char_table.setColumnCount(7)
@@ -2848,15 +3639,44 @@ class RPXProMainWindow(QMainWindow):
         btn_layout.addWidget(add_char_btn)
         
         edit_char_btn = QPushButton("✏️ Bearbeiten")
+        edit_char_btn.clicked.connect(self.edit_character)
         btn_layout.addWidget(edit_char_btn)
-        
+
         delete_char_btn = QPushButton("🗑️ Löschen")
+        delete_char_btn.clicked.connect(self.delete_character)
         btn_layout.addWidget(delete_char_btn)
-        
+
         add_to_session_btn = QPushButton("📥 Zu Session hinzufügen")
+        add_to_session_btn.clicked.connect(self.add_character_to_session)
         btn_layout.addWidget(add_to_session_btn)
-        
+
         layout.addLayout(btn_layout)
+
+        # Schnelle HP/Mana-Steuerung
+        hp_group = QGroupBox("Schnelle HP/Mana-Steuerung")
+        hp_layout = QHBoxLayout(hp_group)
+
+        damage_btn = QPushButton("💔 Schaden")
+        damage_btn.setStyleSheet("background-color: #c0392b; color: white; font-weight: bold; padding: 8px;")
+        damage_btn.clicked.connect(self.deal_damage)
+        hp_layout.addWidget(damage_btn)
+
+        heal_btn = QPushButton("💚 Heilen")
+        heal_btn.setStyleSheet("background-color: #27ae60; color: white; font-weight: bold; padding: 8px;")
+        heal_btn.clicked.connect(self.heal_character)
+        hp_layout.addWidget(heal_btn)
+
+        mana_drain_btn = QPushButton("💧- Mana abziehen")
+        mana_drain_btn.setStyleSheet("background-color: #2980b9; color: white; font-weight: bold; padding: 8px;")
+        mana_drain_btn.clicked.connect(self.drain_mana)
+        hp_layout.addWidget(mana_drain_btn)
+
+        mana_restore_btn = QPushButton("💧+ Mana auffüllen")
+        mana_restore_btn.setStyleSheet("background-color: #3498db; color: white; font-weight: bold; padding: 8px;")
+        mana_restore_btn.clicked.connect(self.restore_mana)
+        hp_layout.addWidget(mana_restore_btn)
+
+        layout.addWidget(hp_group)
         
         return widget
     
@@ -2864,7 +3684,13 @@ class RPXProMainWindow(QMainWindow):
         """Erstellt den Kampf-Tab"""
         widget = QWidget()
         layout = QVBoxLayout(widget)
-        
+
+        # PlayerScreen-Filter
+        self.ps_mirror_combat = QCheckBox("Auf Spieler-Bildschirm uebertragen")
+        self.ps_mirror_combat.setChecked(True)
+        self.ps_mirror_combat.setStyleSheet("color: #3498db; font-size: 11px;")
+        layout.addWidget(self.ps_mirror_combat)
+
         # Würfelsystem
         dice_group = QGroupBox("🎲 Würfelsystem")
         dice_layout = QVBoxLayout(dice_group)
@@ -2930,7 +3756,13 @@ class RPXProMainWindow(QMainWindow):
         """Erstellt den Missions-Tab"""
         widget = QWidget()
         layout = QVBoxLayout(widget)
-        
+
+        # PlayerScreen-Filter
+        self.ps_mirror_missions = QCheckBox("Auf Spieler-Bildschirm uebertragen")
+        self.ps_mirror_missions.setChecked(True)
+        self.ps_mirror_missions.setStyleSheet("color: #3498db; font-size: 11px;")
+        layout.addWidget(self.ps_mirror_missions)
+
         # Aktive Missionen (oben)
         active_group = QGroupBox("🟢 Aktive Missionen")
         active_layout = QVBoxLayout(active_group)
@@ -2953,15 +3785,402 @@ class RPXProMainWindow(QMainWindow):
         btn_layout.addWidget(add_mission_btn)
         
         complete_btn = QPushButton("✅ Abschließen")
+        complete_btn.clicked.connect(self.complete_mission)
         btn_layout.addWidget(complete_btn)
-        
+
         fail_btn = QPushButton("❌ Gescheitert")
+        fail_btn.clicked.connect(self.fail_mission)
         btn_layout.addWidget(fail_btn)
         
         layout.addLayout(btn_layout)
         
         return widget
-    
+
+    def create_inventory_tab(self) -> QWidget:
+        """Erstellt den Inventar-Tab mit Gegenstandsbibliothek und Ort-Items"""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+
+        splitter = QSplitter(Qt.Vertical)
+
+        # === Oberer Bereich: Gegenstandsbibliothek ===
+        lib_group = QGroupBox("Gegenstandsbibliothek (Welt-Items)")
+        lib_layout = QVBoxLayout(lib_group)
+
+        self.items_table = QTableWidget()
+        self.items_table.setColumnCount(7)
+        self.items_table.setHorizontalHeaderLabels([
+            "Name", "Klasse", "Subklasse", "Einzigartig", "Wert", "Gewicht", "Beschreibung"])
+        self.items_table.horizontalHeader().setStretchLastSection(True)
+        self.items_table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.items_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.items_table.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.items_table.customContextMenuRequested.connect(self._item_context_menu)
+        lib_layout.addWidget(self.items_table)
+
+        item_btn_layout = QHBoxLayout()
+        add_item_btn = QPushButton("Hinzufuegen")
+        add_item_btn.clicked.connect(self.add_item_to_world)
+        item_btn_layout.addWidget(add_item_btn)
+
+        edit_item_btn = QPushButton("Bearbeiten")
+        edit_item_btn.clicked.connect(self.edit_world_item)
+        item_btn_layout.addWidget(edit_item_btn)
+
+        del_item_btn = QPushButton("Loeschen")
+        del_item_btn.clicked.connect(self.delete_world_item)
+        item_btn_layout.addWidget(del_item_btn)
+
+        give_item_btn = QPushButton("An Charakter geben...")
+        give_item_btn.clicked.connect(self.give_item_to_character)
+        give_item_btn.setStyleSheet("QPushButton { background: #27ae60; color: white; }")
+        item_btn_layout.addWidget(give_item_btn)
+
+        lib_layout.addLayout(item_btn_layout)
+        splitter.addWidget(lib_group)
+
+        # === Unterer Bereich: Items an Orten ===
+        loc_group = QGroupBox("Items an Orten (versteckt/findbar)")
+        loc_layout = QVBoxLayout(loc_group)
+
+        loc_select = QHBoxLayout()
+        loc_select.addWidget(QLabel("Ort:"))
+        self.inv_location_combo = QComboBox()
+        self.inv_location_combo.currentIndexChanged.connect(self._refresh_location_items)
+        loc_select.addWidget(self.inv_location_combo, stretch=1)
+        loc_layout.addLayout(loc_select)
+
+        self.loc_items_table = QTableWidget()
+        self.loc_items_table.setColumnCount(4)
+        self.loc_items_table.setHorizontalHeaderLabels(["Gegenstand", "Fundwahrsch. %", "Versteckt", ""])
+        self.loc_items_table.horizontalHeader().setStretchLastSection(True)
+        self.loc_items_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        loc_layout.addWidget(self.loc_items_table)
+
+        loc_btn_layout = QHBoxLayout()
+        place_btn = QPushButton("Item hier platzieren...")
+        place_btn.clicked.connect(self.place_item_at_location)
+        loc_btn_layout.addWidget(place_btn)
+
+        remove_loc_btn = QPushButton("Entfernen")
+        remove_loc_btn.clicked.connect(self.remove_item_from_location)
+        loc_btn_layout.addWidget(remove_loc_btn)
+
+        loc_layout.addLayout(loc_btn_layout)
+        splitter.addWidget(loc_group)
+
+        layout.addWidget(splitter)
+        return widget
+
+    def _item_context_menu(self, pos):
+        """Kontextmenu fuer Gegenstandstabelle"""
+        row = self.items_table.rowAt(pos.y())
+        if row < 0:
+            return
+        menu = QMenu(self)
+        give_action = menu.addAction("An Charakter geben...")
+        action = menu.exec(self.items_table.viewport().mapToGlobal(pos))
+        if action == give_action:
+            self.give_item_to_character()
+
+    def refresh_items_table(self):
+        """Aktualisiert die Gegenstandsbibliothek-Tabelle"""
+        if not hasattr(self, 'items_table'):
+            return
+        world = self.data_manager.current_world
+        if not world:
+            self.items_table.setRowCount(0)
+            return
+
+        items = list(world.typical_items.values())
+        self.items_table.setRowCount(len(items))
+        for row, item in enumerate(items):
+            self.items_table.setItem(row, 0, QTableWidgetItem(item.name))
+            self.items_table.setItem(row, 1, QTableWidgetItem(item.item_class))
+            self.items_table.setItem(row, 2, QTableWidgetItem(item.item_subclass))
+            unique_item = QTableWidgetItem("Ja" if item.is_unique else "Nein")
+            self.items_table.setItem(row, 3, unique_item)
+            self.items_table.setItem(row, 4, QTableWidgetItem(str(item.value)))
+            self.items_table.setItem(row, 5, QTableWidgetItem(f"{item.weight:.1f}"))
+            self.items_table.setItem(row, 6, QTableWidgetItem(item.description[:50]))
+
+    def refresh_inv_location_combo(self):
+        """Aktualisiert die Ort-Auswahl im Inventar-Tab"""
+        if not hasattr(self, 'inv_location_combo'):
+            return
+        self.inv_location_combo.blockSignals(True)
+        self.inv_location_combo.clear()
+        world = self.data_manager.current_world
+        if world:
+            for loc_id, loc in world.locations.items():
+                self.inv_location_combo.addItem(loc.name, loc_id)
+        self.inv_location_combo.blockSignals(False)
+
+    def _refresh_location_items(self):
+        """Zeigt Items am ausgewaehlten Ort"""
+        world = self.data_manager.current_world
+        loc_id = self.inv_location_combo.currentData()
+        if not world or not loc_id:
+            self.loc_items_table.setRowCount(0)
+            return
+
+        # Alle Items finden die diesem Ort zugeordnet sind
+        loc_items = [item for item in world.typical_items.values()
+                     if item.location_id == loc_id]
+        self.loc_items_table.setRowCount(len(loc_items))
+        for row, item in enumerate(loc_items):
+            self.loc_items_table.setItem(row, 0, QTableWidgetItem(item.name))
+            self.loc_items_table.setItem(row, 1, QTableWidgetItem(f"{item.find_probability * 100:.0f}%"))
+            self.loc_items_table.setItem(row, 2, QTableWidgetItem("Ja" if item.hidden else "Nein"))
+            self.loc_items_table.setItem(row, 3, QTableWidgetItem(item.id))
+
+    def add_item_to_world(self):
+        """Fuegt einen neuen Gegenstand zur Welt hinzu"""
+        world = self.data_manager.current_world
+        if not world:
+            QMessageBox.warning(self, "Fehler", "Keine Welt geladen!")
+            return
+        self._open_item_editor(None)
+
+    def edit_world_item(self):
+        """Bearbeitet den ausgewaehlten Gegenstand"""
+        world = self.data_manager.current_world
+        if not world:
+            return
+        row = self.items_table.currentRow()
+        if row < 0:
+            QMessageBox.warning(self, "Fehler", "Kein Gegenstand ausgewaehlt!")
+            return
+        items = list(world.typical_items.values())
+        if row < len(items):
+            self._open_item_editor(items[row])
+
+    def delete_world_item(self):
+        """Loescht den ausgewaehlten Gegenstand"""
+        world = self.data_manager.current_world
+        if not world:
+            return
+        row = self.items_table.currentRow()
+        if row < 0:
+            return
+        items = list(world.typical_items.values())
+        if row >= len(items):
+            return
+        item = items[row]
+        reply = QMessageBox.question(self, "Loeschen",
+                                     f"'{item.name}' wirklich loeschen?",
+                                     QMessageBox.Yes | QMessageBox.No)
+        if reply == QMessageBox.Yes:
+            del world.typical_items[item.id]
+            self.data_manager.save_world(world)
+            self.refresh_items_table()
+
+    def _open_item_editor(self, item: Optional[Item]):
+        """Oeffnet den Item-Editor Dialog"""
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Gegenstand bearbeiten" if item else "Neuer Gegenstand")
+        dialog.setMinimumWidth(400)
+        form = QFormLayout(dialog)
+
+        name_edit = QLineEdit(item.name if item else "")
+        form.addRow("Name:", name_edit)
+
+        class_edit = QLineEdit(item.item_class if item else "")
+        form.addRow("Klasse:", class_edit)
+
+        subclass_edit = QLineEdit(item.item_subclass if item else "")
+        form.addRow("Subklasse:", subclass_edit)
+
+        desc_edit = QTextEdit()
+        desc_edit.setMaximumHeight(80)
+        desc_edit.setPlainText(item.description if item else "")
+        form.addRow("Beschreibung:", desc_edit)
+
+        unique_check = QCheckBox("Einzelstueck")
+        unique_check.setChecked(item.is_unique if item else False)
+        form.addRow("", unique_check)
+
+        stackable_check = QCheckBox("Stapelbar")
+        stackable_check.setChecked(item.stackable if item else True)
+        form.addRow("", stackable_check)
+
+        value_spin = QSpinBox()
+        value_spin.setRange(0, 999999)
+        value_spin.setValue(item.value if item else 0)
+        form.addRow("Wert:", value_spin)
+
+        weight_spin = QDoubleSpinBox()
+        weight_spin.setRange(0, 9999)
+        weight_spin.setDecimals(1)
+        weight_spin.setValue(item.weight if item else 0.0)
+        form.addRow("Gewicht (kg):", weight_spin)
+
+        hp_spin = QSpinBox()
+        hp_spin.setRange(-999, 999)
+        hp_spin.setValue(item.health_bonus if item else 0)
+        form.addRow("HP-Bonus:", hp_spin)
+
+        str_spin = QSpinBox()
+        str_spin.setRange(-999, 999)
+        str_spin.setValue(item.strength_bonus if item else 0)
+        form.addRow("Staerke-Bonus:", str_spin)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        form.addRow(buttons)
+
+        if dialog.exec() == QDialog.Accepted:
+            name = name_edit.text().strip()
+            if not name:
+                return
+            world = self.data_manager.current_world
+            if not world:
+                return
+
+            if item:
+                # Bearbeiten
+                item.name = name
+                item.item_class = class_edit.text().strip()
+                item.item_subclass = subclass_edit.text().strip()
+                item.description = desc_edit.toPlainText().strip()
+                item.is_unique = unique_check.isChecked()
+                item.stackable = stackable_check.isChecked()
+                item.value = value_spin.value()
+                item.weight = weight_spin.value()
+                item.health_bonus = hp_spin.value()
+                item.strength_bonus = str_spin.value()
+            else:
+                # Neu erstellen
+                new_item = Item(
+                    id=str(uuid.uuid4())[:8],
+                    name=name,
+                    item_class=class_edit.text().strip(),
+                    item_subclass=subclass_edit.text().strip(),
+                    description=desc_edit.toPlainText().strip(),
+                    is_unique=unique_check.isChecked(),
+                    stackable=stackable_check.isChecked(),
+                    value=value_spin.value(),
+                    weight=weight_spin.value(),
+                    health_bonus=hp_spin.value(),
+                    strength_bonus=str_spin.value()
+                )
+                world.typical_items[new_item.id] = new_item
+
+            self.data_manager.save_world(world)
+            self.refresh_items_table()
+
+    def give_item_to_character(self):
+        """Gibt den ausgewaehlten Gegenstand an einen Charakter"""
+        world = self.data_manager.current_world
+        session = self.data_manager.current_session
+        if not world or not session:
+            return
+
+        row = self.items_table.currentRow()
+        if row < 0:
+            QMessageBox.warning(self, "Fehler", "Kein Gegenstand ausgewaehlt!")
+            return
+        items = list(world.typical_items.values())
+        if row >= len(items):
+            return
+        item = items[row]
+
+        # Charakter-Auswahl
+        char_names = [f"{c.name} ({c.player_name or 'NPC'})" for c in session.characters.values()]
+        char_ids = list(session.characters.keys())
+        if not char_names:
+            QMessageBox.warning(self, "Fehler", "Keine Charaktere vorhanden!")
+            return
+
+        name, ok = QInputDialog.getItem(self, "Charakter waehlen",
+                                         f"'{item.name}' geben an:", char_names, 0, False)
+        if ok:
+            idx = char_names.index(name)
+            char = session.characters[char_ids[idx]]
+            # Zum Inventar hinzufuegen
+            if item.id in char.inventory:
+                if item.stackable:
+                    char.inventory[item.id] = min(char.inventory[item.id] + 1, item.max_stack)
+                else:
+                    QMessageBox.information(self, "Info", f"{char.name} hat '{item.name}' bereits!")
+                    return
+            else:
+                char.inventory[item.id] = 1
+
+            self.data_manager.save_session(session)
+            msg = ChatMessage(
+                role=MessageRole.SYSTEM,
+                author="System",
+                content=f"🎒 {char.name} erhaelt: {item.name}"
+            )
+            self.chat_widget.add_message(msg)
+            session.chat_history.append(msg)
+
+    def place_item_at_location(self):
+        """Platziert ein Item am ausgewaehlten Ort"""
+        world = self.data_manager.current_world
+        if not world:
+            return
+        loc_id = self.inv_location_combo.currentData()
+        if not loc_id:
+            QMessageBox.warning(self, "Fehler", "Kein Ort ausgewaehlt!")
+            return
+
+        # Item aus Bibliothek waehlen
+        item_names = [f"{it.name} ({it.item_class})" for it in world.typical_items.values()]
+        item_ids = list(world.typical_items.keys())
+        if not item_names:
+            QMessageBox.warning(self, "Fehler", "Keine Gegenstaende definiert!")
+            return
+
+        name, ok = QInputDialog.getItem(self, "Item waehlen",
+                                         "Gegenstand platzieren:", item_names, 0, False)
+        if ok:
+            idx = item_names.index(name)
+            item_id = item_ids[idx]
+            item = world.typical_items[item_id]
+
+            # Wahrscheinlichkeit
+            prob, ok2 = QInputDialog.getInt(
+                self, "Fundwahrscheinlichkeit",
+                f"Wahrscheinlichkeit '{item.name}' zu finden (%):",
+                50, 1, 100)
+            if ok2:
+                # Kopie erstellen fuer Ort-Bindung
+                loc_item = Item(
+                    id=f"{item_id}_loc_{loc_id[:4]}",
+                    name=item.name,
+                    item_class=item.item_class,
+                    item_subclass=item.item_subclass,
+                    description=item.description,
+                    is_unique=item.is_unique,
+                    weight=item.weight,
+                    value=item.value,
+                    location_id=loc_id,
+                    find_probability=prob / 100.0,
+                    hidden=True
+                )
+                world.typical_items[loc_item.id] = loc_item
+                self.data_manager.save_world(world)
+                self._refresh_location_items()
+
+    def remove_item_from_location(self):
+        """Entfernt ein Item vom ausgewaehlten Ort"""
+        world = self.data_manager.current_world
+        if not world:
+            return
+        row = self.loc_items_table.currentRow()
+        if row < 0:
+            return
+        item_id_cell = self.loc_items_table.item(row, 3)
+        if item_id_cell:
+            item_id = item_id_cell.text()
+            if item_id in world.typical_items:
+                del world.typical_items[item_id]
+                self.data_manager.save_world(world)
+                self._refresh_location_items()
+
     def create_immersion_tab(self) -> QWidget:
         """Erstellt den Immersion-Tab"""
         widget = QWidget()
@@ -2990,15 +4209,15 @@ class RPXProMainWindow(QMainWindow):
         light_btn_layout.addWidget(strobe_btn, 0, 1)
         
         day_btn = QPushButton("☀️ Tag")
-        day_btn.clicked.connect(lambda: self.light_manager.set_day_night(False))
+        day_btn.clicked.connect(lambda: self._apply_light_effect("day"))
         light_btn_layout.addWidget(day_btn, 1, 0)
-        
+
         night_btn = QPushButton("🌙 Nacht")
-        night_btn.clicked.connect(lambda: self.light_manager.set_day_night(True))
+        night_btn.clicked.connect(lambda: self._apply_light_effect("night"))
         light_btn_layout.addWidget(night_btn, 1, 1)
-        
+
         clear_btn = QPushButton("🔲 Effekte löschen")
-        clear_btn.clicked.connect(self.light_manager.clear_filter)
+        clear_btn.clicked.connect(lambda: self._apply_light_effect("clear"))
         light_btn_layout.addWidget(clear_btn, 2, 0, 1, 2)
         
         light_layout.addLayout(light_btn_layout)
@@ -3104,8 +4323,26 @@ class RPXProMainWindow(QMainWindow):
         
         self.disasters_check = QCheckBox("Naturkatastrophen")
         world_layout.addRow("", self.disasters_check)
-        
+
         layout.addWidget(world_group)
+
+        # Spieler-Bildschirm Effekte
+        effects_group = QGroupBox("✨ Effekte auf Spieler-Bildschirm")
+        effects_layout = QFormLayout(effects_group)
+
+        self.mirror_effects_check = QCheckBox("Lichteffekte spiegeln (Blitz, Stroboskop)")
+        self.mirror_effects_check.setChecked(True)
+        effects_layout.addRow("", self.mirror_effects_check)
+
+        self.mirror_daynight_check = QCheckBox("Tag/Nacht-Effekte spiegeln")
+        self.mirror_daynight_check.setChecked(True)
+        effects_layout.addRow("", self.mirror_daynight_check)
+
+        self.mirror_colorfilter_check = QCheckBox("Farbfilter spiegeln")
+        self.mirror_colorfilter_check.setChecked(True)
+        effects_layout.addRow("", self.mirror_colorfilter_check)
+
+        layout.addWidget(effects_group)
 
         # Spieler-Bildschirm Steuerung
         ps_group = QGroupBox("🖥️ Spieler-Bildschirm (2. Monitor)")
@@ -3121,6 +4358,36 @@ class RPXProMainWindow(QMainWindow):
         self.ps_fullscreen_check.setChecked(True)
         ps_btn_layout.addWidget(self.ps_fullscreen_check)
         ps_layout.addLayout(ps_btn_layout)
+
+        # Anzeigemodus
+        mode_layout = QHBoxLayout()
+        mode_layout.addWidget(QLabel("Anzeigemodus:"))
+        self.ps_mode_combo = QComboBox()
+        self.ps_mode_combo.addItem("Bild", PlayerScreenMode.IMAGE.value)
+        self.ps_mode_combo.addItem("Rotierende Ansicht", PlayerScreenMode.ROTATING.value)
+        self.ps_mode_combo.addItem("Kachelansicht", PlayerScreenMode.TILES.value)
+        self.ps_mode_combo.currentIndexChanged.connect(self._on_ps_mode_changed)
+        mode_layout.addWidget(self.ps_mode_combo, stretch=1)
+        ps_layout.addLayout(mode_layout)
+
+        # Rotations-Intervall und Event-Dauer
+        timing_layout = QHBoxLayout()
+        timing_layout.addWidget(QLabel("Rotations-Intervall:"))
+        self.ps_rotation_spin = QSpinBox()
+        self.ps_rotation_spin.setRange(5, 60)
+        self.ps_rotation_spin.setValue(15)
+        self.ps_rotation_spin.setSuffix(" Sek")
+        self.ps_rotation_spin.valueChanged.connect(self._on_ps_rotation_changed)
+        timing_layout.addWidget(self.ps_rotation_spin)
+
+        timing_layout.addWidget(QLabel("Event-Dauer:"))
+        self.ps_event_duration_spin = QSpinBox()
+        self.ps_event_duration_spin.setRange(2, 10)
+        self.ps_event_duration_spin.setValue(4)
+        self.ps_event_duration_spin.setSuffix(" Sek")
+        self.ps_event_duration_spin.valueChanged.connect(self._on_ps_event_duration_changed)
+        timing_layout.addWidget(self.ps_event_duration_spin)
+        ps_layout.addLayout(timing_layout)
 
         # Monitor-Auswahl
         monitor_layout = QHBoxLayout()
@@ -3143,6 +4410,10 @@ class RPXProMainWindow(QMainWindow):
         ps_image_btn = QPushButton("Bild laden...")
         ps_image_btn.clicked.connect(self.ps_load_image)
         action_layout.addWidget(ps_image_btn)
+
+        ps_bg_btn = QPushButton("Hintergrundbild...")
+        ps_bg_btn.clicked.connect(self.ps_set_background)
+        action_layout.addWidget(ps_bg_btn)
         ps_layout.addLayout(action_layout)
 
         layout.addWidget(ps_group)
@@ -3175,8 +4446,8 @@ class RPXProMainWindow(QMainWindow):
 
         self.player_screen = PlayerScreen(self)
 
-        # Lichteffekte spiegeln
-        self.light_manager.effect_started.connect(self.player_screen.trigger_effect)
+        # Lichteffekte spiegeln (gefiltert über Einstellung)
+        self.light_manager.effect_started.connect(self._mirror_effect_to_player)
 
         # Monitor-Position
         screens = QApplication.screens()
@@ -3200,8 +4471,150 @@ class RPXProMainWindow(QMainWindow):
                 loc = self.data_manager.current_world.locations[loc_id]
                 self.player_screen.show_location_image(loc)
 
+        # Modus setzen
+        self._on_ps_mode_changed(self.ps_mode_combo.currentIndex())
+        # Initiale Daten senden
+        self._sync_player_screen_data()
+
         self.ps_open_btn.setText("Spieler-Bildschirm schliessen")
         self.status_bar.showMessage("Spieler-Bildschirm geoeffnet")
+
+    def _on_ps_mode_changed(self, index):
+        """Wird aufgerufen wenn der Anzeigemodus geaendert wird"""
+        mode_value = self.ps_mode_combo.currentData()
+        if not mode_value:
+            return
+        mode = PlayerScreenMode(mode_value)
+        if self.player_screen and self.player_screen.isVisible():
+            self.player_screen.set_mode(mode)
+            self._sync_player_screen_data()
+
+    def _on_ps_rotation_changed(self, value):
+        if self.player_screen:
+            self.player_screen.set_rotation_interval(value * 1000)
+
+    def _on_ps_event_duration_changed(self, value):
+        if self.player_screen:
+            self.player_screen.set_event_duration(value * 1000)
+
+    def _sync_player_screen_data(self):
+        """Sendet aktuelle Daten an den PlayerScreen"""
+        if not self.player_screen or not self.player_screen.isVisible():
+            return
+        session = self.data_manager.current_session
+        world = self.data_manager.current_world
+        if not session:
+            return
+
+        # Charaktere
+        chars = {}
+        for cid, char in session.characters.items():
+            if not char.is_npc:
+                chars[cid] = {
+                    "name": char.name, "health": char.health, "max_health": char.max_health,
+                    "mana": char.mana, "max_mana": char.max_mana, "image_path": char.image_path
+                }
+        self.player_screen.update_characters(chars)
+
+        # Missionen
+        missions = [{"name": m.name, "status": m.status.value}
+                     for m in session.active_missions.values() if m.status == MissionStatus.ACTIVE]
+        self.player_screen.update_missions(missions)
+
+        # Chat (letzte 15 Nachrichten)
+        chat_msgs = []
+        for msg in session.chat_history[-15:]:
+            color = "#aaa"
+            if msg.role == MessageRole.SYSTEM:
+                color = "#888"
+            elif msg.role == MessageRole.GM:
+                color = "#f1c40f"
+            elif msg.role == MessageRole.PLAYER:
+                color = "#2ecc71"
+            chat_msgs.append(f"<span style='color:{color};'><b>{msg.author}:</b> {msg.content}</span>")
+        self.player_screen.update_chat(chat_msgs)
+
+        # Karte
+        if world and world.map_image:
+            self.player_screen._map_path = world.map_image
+
+        # Runden-Info
+        if session.is_round_based and session.turn_order:
+            current_name = "-"
+            if session.current_turn_index < len(session.turn_order):
+                cid = session.turn_order[session.current_turn_index]
+                if cid in session.characters:
+                    current_name = session.characters[cid].name
+            order_names = []
+            for cid in session.turn_order:
+                if cid in session.characters:
+                    order_names.append(session.characters[cid].name)
+            self.player_screen.update_turn_info(current_name, session.current_round, order_names)
+
+    def _route_to_player_screen(self, event: PlayerEvent):
+        """Zentrale Routing-Methode fuer alle PlayerScreen-Events"""
+        if not self.player_screen or not self.player_screen.isVisible():
+            return
+
+        # Tab-Filter pruefen
+        filter_map = {
+            "world": self.ps_mirror_world,
+            "characters": self.ps_mirror_characters,
+            "combat": self.ps_mirror_combat,
+            "missions": self.ps_mirror_missions,
+        }
+        cb = filter_map.get(event.source_tab)
+        if cb and not cb.isChecked():
+            return
+
+        # Event verarbeiten
+        if event.event_type == "location_entered":
+            loc = event.data.get("location")
+            if loc:
+                self.player_screen.show_location_image(loc, event.data.get("interior", False))
+        elif event.event_type == "character_damaged":
+            self.player_screen.update_characters(event.data.get("all_characters", {}))
+            self.player_screen.highlight_character(event.data.get("char_id", ""), "#e74c3c")
+            char_name = event.data.get("char_name", "?")
+            amount = event.data.get("amount", 0)
+            self.player_screen.show_announcement(
+                f"{char_name} erleidet {amount} Schaden!", "skull", "#e74c3c")
+        elif event.event_type == "character_healed":
+            self.player_screen.update_characters(event.data.get("all_characters", {}))
+            self.player_screen.highlight_character(event.data.get("char_id", ""), "#2ecc71")
+            char_name = event.data.get("char_name", "?")
+            amount = event.data.get("amount", 0)
+            self.player_screen.show_announcement(
+                f"{char_name} wird um {amount} geheilt!", "heart", "#2ecc71")
+        elif event.event_type == "character_died":
+            self.player_screen.update_characters(event.data.get("all_characters", {}))
+            self.player_screen.show_announcement(
+                f"{event.data.get('char_name', '?')} ist gefallen!", "skull", "#e74c3c", 6000)
+        elif event.event_type == "mission_completed":
+            self.player_screen.update_missions(event.data.get("all_missions", []))
+            self.player_screen.show_announcement(
+                f"Mission abgeschlossen: {event.data.get('name', '?')}", "check", "#2ecc71")
+        elif event.event_type == "mission_failed":
+            self.player_screen.update_missions(event.data.get("all_missions", []))
+            self.player_screen.show_announcement(
+                f"Mission gescheitert: {event.data.get('name', '?')}", "cross", "#e74c3c")
+        elif event.event_type == "turn_changed":
+            self.player_screen.show_announcement(
+                f"Du bist dran, {event.data.get('char_name', '?')}!", "sword", "#f1c40f")
+            self.player_screen.update_turn_info(
+                event.data.get("char_name", "-"),
+                event.data.get("round", 1),
+                event.data.get("order_names", []))
+        elif event.event_type == "round_started":
+            self.player_screen.show_announcement(
+                f"Runde {event.data.get('round', '?')} beginnt!", "shield", "#3498db")
+            self.player_screen.update_turn_info(
+                event.data.get("char_name", "-"),
+                event.data.get("round", 1),
+                event.data.get("order_names", []))
+        elif event.event_type == "dice_rolled":
+            self.player_screen.show_announcement(
+                f"{event.data.get('roller', '?')}: {event.data.get('result', '?')}", "dice", "#9b59b6")
 
     def ps_show_black(self):
         """Zeigt schwarzen Bildschirm auf dem Spieler-Monitor"""
@@ -3228,6 +4641,17 @@ class RPXProMainWindow(QMainWindow):
         if path:
             self.player_screen.show_custom_image(path)
 
+    def ps_set_background(self):
+        """Setzt ein Hintergrundbild fuer Kachel-/Rotationsansicht"""
+        if not self.player_screen or not self.player_screen.isVisible():
+            QMessageBox.warning(self, "Fehler", "Spieler-Bildschirm ist nicht geoeffnet!")
+            return
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Hintergrundbild waehlen", str(IMAGES_DIR),
+            "Bilder (*.png *.jpg *.jpeg *.bmp *.gif)")
+        if path:
+            self.player_screen.set_background_image(path)
+
     def create_turn_panel(self) -> QWidget:
         """Erstellt das Rundensteuerungs-Panel"""
         panel = QWidget()
@@ -3245,12 +4669,23 @@ class RPXProMainWindow(QMainWindow):
         self.turn_order_list = QListWidget()
         layout.addWidget(self.turn_order_list)
         
+        # Runden-Zaehler
+        self.round_label = QLabel("Runde: 1")
+        self.round_label.setStyleSheet("font-size: 14px; color: #3498db;")
+        layout.addWidget(self.round_label)
+
         # Zug-Buttons
         self.end_turn_btn = QPushButton("✅ Zug beenden")
         self.end_turn_btn.clicked.connect(self.end_turn)
         self.end_turn_btn.setMinimumHeight(40)
         layout.addWidget(self.end_turn_btn)
-        
+
+        self.next_round_btn = QPushButton("🔄 Naechste Runde")
+        self.next_round_btn.clicked.connect(self.next_round)
+        self.next_round_btn.setMinimumHeight(40)
+        self.next_round_btn.setStyleSheet("QPushButton { background: #2980b9; color: white; font-weight: bold; }")
+        layout.addWidget(self.next_round_btn)
+
         # Aktionen-Zähler
         self.actions_label = QLabel("Aktionen: 0/∞")
         layout.addWidget(self.actions_label)
@@ -3445,12 +4880,28 @@ class RPXProMainWindow(QMainWindow):
             self.world_genre_edit.setText(world.settings.genre)
             self.world_desc_edit.setPlainText(world.settings.description)
             self.refresh_locations_tree()
+            self.refresh_combat_lists()
+            self.refresh_items_table()
+            self.refresh_inv_location_combo()
+            self._refresh_world_map()
+            # Karten-Label aktualisieren
+            if hasattr(self, 'map_path_label'):
+                if world.map_image:
+                    self.map_path_label.setText(Path(world.map_image).name)
+                else:
+                    self.map_path_label.setText("Keine Karte hinterlegt")
+            # Einstellungen laden
+            self._load_settings_from_session()
     
     def on_round_mode_changed(self, state):
         """Wird aufgerufen wenn Rundenmodus geändert wird"""
         is_round_based = state == Qt.Checked
         self.actions_spin.setEnabled(is_round_based)
         self.turn_panel.setVisible(is_round_based)
+        session = self.data_manager.current_session
+        if session:
+            session.is_round_based = is_round_based
+            self.data_manager.save_session(session)
     
     def on_location_entered(self, location_id: str):
         """Wird aufgerufen wenn ein Ort betreten wird"""
@@ -3476,8 +4927,10 @@ class RPXProMainWindow(QMainWindow):
                 self.audio_manager.play_music(loc.background_music)
 
             # Spieler-Bildschirm aktualisieren
-            if self.player_screen and self.player_screen.isVisible():
-                self.player_screen.show_location_image(loc)
+            self._route_to_player_screen(PlayerEvent(
+                event_type="location_entered",
+                data={"location": loc, "interior": True},
+                source_tab="world"))
 
             # Log
             msg = ChatMessage(
@@ -3493,16 +4946,22 @@ class RPXProMainWindow(QMainWindow):
     
     def on_location_exited(self, location_id: str):
         """Wird aufgerufen wenn ein Ort verlassen wird"""
+        session = self.data_manager.current_session
         world = self.data_manager.current_world
         if world and location_id in world.locations:
             loc = world.locations[location_id]
-            
+
             # Exit-Trigger
             for trigger in loc.triggers:
                 if trigger.trigger_type == TriggerType.ON_EVERY_LEAVE:
                     self._fire_trigger(trigger)
-            
+
             self.audio_manager.stop_music()
+
+            # Aktuellen Ort zurücksetzen
+            if session:
+                session.current_location_id = None
+                self.data_manager.save_session(session)
     
     def _fire_trigger(self, trigger: Trigger):
         """Führt einen Trigger aus"""
@@ -3534,9 +4993,14 @@ class RPXProMainWindow(QMainWindow):
     
     def refresh_world_list(self):
         """Aktualisiert die Welt-Auswahlliste"""
+        self.world_combo.blockSignals(True)
         self.world_combo.clear()
         for world in self.data_manager.worlds.values():
             self.world_combo.addItem(world.settings.name, world.id)
+        self.world_combo.blockSignals(False)
+        # Manuell triggern falls Items vorhanden
+        if self.world_combo.count() > 0:
+            self.on_world_changed(self.world_combo.currentIndex())
     
     def refresh_locations_tree(self):
         """Aktualisiert den Orte-Baum"""
@@ -3572,8 +5036,23 @@ class RPXProMainWindow(QMainWindow):
         world.settings.name = self.world_name_edit.text()
         world.settings.genre = self.world_genre_edit.text()
         world.settings.description = self.world_desc_edit.toPlainText()
-        
+
+        # Welt-Einstellungen aus dem Einstellungen-Tab übernehmen
+        world.settings.time_ratio = self.time_ratio_spin.value()
+        world.settings.day_hours = self.day_hours_spin.value()
+        world.settings.daylight_hours = self.daylight_spin.value()
+        world.settings.simulate_hunger = self.hunger_check.isChecked()
+        world.settings.simulate_disasters = self.disasters_check.isChecked()
+
         if self.data_manager.save_world(world):
+            self.refresh_world_list()
+            # Welt in Combo wieder auswählen
+            for i in range(self.world_combo.count()):
+                if self.world_combo.itemData(i) == world.id:
+                    self.world_combo.blockSignals(True)
+                    self.world_combo.setCurrentIndex(i)
+                    self.world_combo.blockSignals(False)
+                    break
             self.status_bar.showMessage("Welt gespeichert")
     
     def add_location(self):
@@ -3603,6 +5082,8 @@ class RPXProMainWindow(QMainWindow):
                 session.characters[char_id] = character
                 self.data_manager.save_session(session)
                 self.refresh_character_table()
+                self.refresh_character_panel()
+                self.prompt_widget.update_characters(session.characters)
     
     def refresh_character_table(self):
         """Aktualisiert die Charaktertabelle"""
@@ -3721,7 +5202,7 @@ class RPXProMainWindow(QMainWindow):
             if current_char_id in session.characters:
                 char = session.characters[current_char_id]
                 self.current_turn_label.setText(f"Aktuell: {char.name}")
-                
+
                 msg = ChatMessage(
                     role=MessageRole.SYSTEM,
                     author="System",
@@ -3729,14 +5210,71 @@ class RPXProMainWindow(QMainWindow):
                 )
                 self.chat_widget.add_message(msg)
                 session.chat_history.append(msg)
-            
+
+                # Event an PlayerScreen
+                order_names = [session.characters[cid].name for cid in session.turn_order
+                               if cid in session.characters]
+                self._route_to_player_screen(PlayerEvent(
+                    event_type="turn_changed",
+                    data={"char_name": char.name, "round": session.current_round,
+                          "order_names": order_names},
+                    source_tab="combat"))
+
             self.data_manager.save_session(session)
-    
+
+    def next_round(self):
+        """Startet eine neue Runde"""
+        session = self.data_manager.current_session
+        if not session or not session.is_round_based:
+            return
+
+        session.current_round += 1
+        session.current_turn_index = 0
+        self.round_label.setText(f"Runde: {session.current_round}")
+
+        # Ersten Charakter der neuen Runde setzen
+        first_name = "-"
+        if session.turn_order:
+            first_id = session.turn_order[0]
+            if first_id in session.characters:
+                first_name = session.characters[first_id].name
+                self.current_turn_label.setText(f"Aktuell: {first_name}")
+
+        msg = ChatMessage(
+            role=MessageRole.SYSTEM,
+            author="System",
+            content=f"🔄 Runde {session.current_round} beginnt! {first_name} ist dran."
+        )
+        self.chat_widget.add_message(msg)
+        session.chat_history.append(msg)
+        self.data_manager.save_session(session)
+
+        # Event an PlayerScreen
+        order_names = [session.characters[cid].name for cid in session.turn_order
+                       if cid in session.characters]
+        self._route_to_player_screen(PlayerEvent(
+            event_type="round_started",
+            data={"round": session.current_round, "char_name": first_name,
+                  "order_names": order_names},
+            source_tab="combat"))
+
+    def _collect_player_chars(self, session) -> Dict[str, Any]:
+        """Sammelt Charakter-Daten fuer den PlayerScreen"""
+        chars = {}
+        if session:
+            for cid, char in session.characters.items():
+                if not char.is_npc:
+                    chars[cid] = {
+                        "name": char.name, "health": char.health, "max_health": char.max_health,
+                        "mana": char.mana, "max_mana": char.max_mana, "image_path": char.image_path
+                    }
+        return chars
+
     def choose_color_filter(self):
         """Öffnet Farbauswahl-Dialog"""
         color = QColorDialog.getColor()
         if color.isValid():
-            self.light_manager.set_color_filter(color.name())
+            self._apply_light_effect(f"color:{color.name()}")
     
     def play_music(self):
         """Spielt ausgewählte Musik"""
@@ -3766,8 +5304,14 @@ class RPXProMainWindow(QMainWindow):
             if session:
                 self.data_manager.current_session = session
                 self.data_manager.current_world = world
-                self.status_bar.showMessage(f"Session '{session_name}' erstellt")
+                self.chat_widget.load_history(session.chat_history)
+                self.refresh_character_table()
+                self.refresh_character_panel()
+                self.refresh_missions_list()
+                self.refresh_combat_lists()
                 self.prompt_widget.update_characters(session.characters)
+                self._load_settings_from_session()
+                self.status_bar.showMessage(f"Session '{session_name}' erstellt")
     
     def load_session(self):
         """Lädt eine Session"""
@@ -3786,8 +5330,13 @@ class RPXProMainWindow(QMainWindow):
                 
                 self.chat_widget.load_history(session.chat_history)
                 self.refresh_character_table()
+                self.refresh_character_panel()
                 self.refresh_missions_list()
+                self.refresh_combat_lists()
+                self.refresh_items_table()
+                self.refresh_inv_location_combo()
                 self.prompt_widget.update_characters(session.characters)
+                self._load_settings_from_session()
                 self.status_bar.showMessage(f"Session '{name}' geladen")
     
     def save_session(self):
@@ -3836,6 +5385,700 @@ class RPXProMainWindow(QMainWindow):
             if self.data_manager.current_world:
                 self.refresh_locations_tree()
             self.status_bar.showMessage("Regelwerk importiert!")
+
+    # ==================== NEUE METHODEN (Bug-Fixes) ====================
+
+    def _setup_simulation_timer(self):
+        """Startet den Simulations-Timer (alle 60 Sekunden)"""
+        self.sim_timer = QTimer(self)
+        self.sim_timer.timeout.connect(self._simulation_tick)
+        self.sim_timer.start(60_000)  # Alle 60 Sekunden
+
+    def _simulation_tick(self):
+        """Wird jede Minute aufgerufen - simuliert Hunger, Durst, Zeit, Katastrophen"""
+        session = self.data_manager.current_session
+        world = self.data_manager.current_world
+        if not session or not world:
+            return
+
+        time_ratio = world.settings.time_ratio  # 1 echte Stunde = X Spielstunden
+        game_hours_per_tick = time_ratio / 60.0  # Pro Minute anteilig
+
+        changed = False
+
+        # Hunger/Durst-Simulation
+        if world.settings.simulate_hunger:
+            for char in session.characters.values():
+                # Hunger erhöhen
+                old_hunger = char.hunger
+                char.hunger = min(100, char.hunger + char.hunger_rate * game_hours_per_tick)
+                char.thirst = min(100, char.thirst + char.thirst_rate * game_hours_per_tick)
+
+                # Warnung bei kritischen Werten
+                if int(old_hunger / 25) < int(char.hunger / 25) and char.hunger >= 50:
+                    level = "hungrig" if char.hunger < 75 else "am Verhungern"
+                    msg = ChatMessage(
+                        role=MessageRole.SYSTEM,
+                        author="System",
+                        content=f"⚠️ {char.name} ist {level}! (Hunger: {int(char.hunger)}%)"
+                    )
+                    self.chat_widget.add_message(msg)
+                    session.chat_history.append(msg)
+                changed = True
+
+        # Naturkatastrophen
+        if world.settings.simulate_disasters:
+            if random.random() < world.settings.disaster_probability * game_hours_per_tick:
+                disaster = random.choice([
+                    "Erdbeben", "Überschwemmung", "Vulkanausbruch",
+                    "Tornado", "Dürre", "Meteoritenschauer",
+                    "Magischer Sturm", "Seuche", "Heuschreckenschwarm"
+                ])
+                msg = ChatMessage(
+                    role=MessageRole.NARRATOR,
+                    author="Erzähler",
+                    content=f"🌋 NATURKATASTROPHE: {disaster}! Die Gruppe muss reagieren!"
+                )
+                self.chat_widget.add_message(msg)
+                session.chat_history.append(msg)
+
+                # Visueller Effekt
+                self.light_manager.flash_strobe(flashes=3, interval_ms=200)
+                if self.player_screen and self.player_screen.isVisible():
+                    self.player_screen.trigger_effect("strobe")
+                changed = True
+
+        # Zeitfortschritt
+        if world.settings.simulate_time:
+            world.settings.current_time += game_hours_per_tick
+            if world.settings.current_time >= world.settings.day_hours:
+                world.settings.current_time -= world.settings.day_hours
+                world.settings.current_day += 1
+                msg = ChatMessage(
+                    role=MessageRole.SYSTEM,
+                    author="System",
+                    content=f"🌅 Ein neuer Tag bricht an! (Tag {world.settings.current_day})"
+                )
+                self.chat_widget.add_message(msg)
+                session.chat_history.append(msg)
+
+            # Tageszeit aktualisieren
+            hour = world.settings.current_time
+            total = world.settings.day_hours
+            ratio = hour / total
+            if ratio < 0.2:
+                new_tod = TimeOfDay.NIGHT
+            elif ratio < 0.3:
+                new_tod = TimeOfDay.DAWN
+            elif ratio < 0.4:
+                new_tod = TimeOfDay.MORNING
+            elif ratio < 0.5:
+                new_tod = TimeOfDay.NOON
+            elif ratio < 0.65:
+                new_tod = TimeOfDay.AFTERNOON
+            elif ratio < 0.8:
+                new_tod = TimeOfDay.EVENING
+            else:
+                new_tod = TimeOfDay.NIGHT
+
+            if new_tod != session.current_time_of_day:
+                session.current_time_of_day = new_tod
+                # PlayerScreen aktualisieren
+                if self.player_screen and self.player_screen.isVisible():
+                    self.player_screen.update_time(new_tod.value)
+                changed = True
+
+        if changed:
+            self.data_manager.save_session(session)
+            self.refresh_character_panel()
+
+    def _mirror_effect_to_player(self, effect_name: str):
+        """Spiegelt Blitz/Stroboskop auf den PlayerScreen (über effect_started Signal)"""
+        if not self.player_screen or not self.player_screen.isVisible():
+            return
+        if effect_name in ("lightning", "strobe") and self.mirror_effects_check.isChecked():
+            self.player_screen.trigger_effect(effect_name)
+
+    def _apply_light_effect(self, effect_name: str):
+        """Wendet einen Lichteffekt auf GM-View an und spiegelt optional auf PlayerScreen"""
+        # GM-seitig anwenden
+        if effect_name == "day":
+            self.light_manager.set_day_night(False)
+        elif effect_name == "night":
+            self.light_manager.set_day_night(True)
+        elif effect_name == "clear":
+            self.light_manager.clear_filter()
+        elif effect_name.startswith("color:"):
+            parts = effect_name.split(":")
+            color = parts[1]
+            opacity = float(parts[2]) if len(parts) > 2 else 0.3
+            self.light_manager.set_color_filter(color, opacity)
+
+        # Auf PlayerScreen spiegeln (mit Einstellungs-Check)
+        if not self.player_screen or not self.player_screen.isVisible():
+            return
+
+        if effect_name in ("day", "night"):
+            if self.mirror_daynight_check.isChecked():
+                self.player_screen.trigger_effect(effect_name)
+        elif effect_name == "clear":
+            self.player_screen.trigger_effect("clear")
+        elif effect_name.startswith("color:"):
+            if self.mirror_colorfilter_check.isChecked():
+                self.player_screen.trigger_effect(effect_name)
+
+    def set_world_map(self):
+        """Öffnet Dialog zum Setzen der Weltkarte"""
+        world = self.data_manager.current_world
+        if not world:
+            QMessageBox.warning(self, "Fehler", "Keine Welt ausgewählt!")
+            return
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Weltkarte laden", str(MAPS_DIR),
+            "Bilder (*.png *.jpg *.jpeg *.bmp *.gif)")
+        if path:
+            world.map_image = path
+            self.data_manager.save_world(world)
+            self.map_path_label.setText(Path(path).name)
+            self.status_bar.showMessage(f"Weltkarte gesetzt: {Path(path).name}")
+
+    def clear_world_map(self):
+        """Entfernt die Weltkarte"""
+        world = self.data_manager.current_world
+        if not world:
+            return
+        world.map_image = None
+        self.data_manager.save_world(world)
+        self.map_path_label.setText("Keine Karte hinterlegt")
+
+    def on_location_tree_clicked(self, item, column):
+        """Wird aufgerufen wenn ein Ort im Baum angeklickt wird - zeigt ihn in der Ortsansicht"""
+        world = self.data_manager.current_world
+        if not world:
+            return
+        loc_id = item.data(0, Qt.UserRole)
+        if loc_id and loc_id in world.locations:
+            location = world.locations[loc_id]
+            self.location_view.show_location(location, world)
+            # Zum Ortsansicht-Tab wechseln
+            self.tabs.setCurrentWidget(self.location_view)
+
+    def edit_location(self):
+        """Bearbeitet den ausgewählten Ort"""
+        world = self.data_manager.current_world
+        if not world:
+            return
+        item = self.locations_tree.currentItem()
+        if not item:
+            QMessageBox.warning(self, "Fehler", "Kein Ort ausgewählt!")
+            return
+        loc_id = item.data(0, Qt.UserRole)
+        if loc_id not in world.locations:
+            return
+        loc = world.locations[loc_id]
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f"Ort bearbeiten: {loc.name}")
+        dialog.setMinimumSize(500, 500)
+        dlayout = QVBoxLayout(dialog)
+
+        form = QFormLayout()
+        name_edit = QLineEdit(loc.name)
+        form.addRow("Name:", name_edit)
+
+        desc_edit = QTextEdit()
+        desc_edit.setPlainText(loc.description)
+        desc_edit.setMaximumHeight(100)
+        form.addRow("Beschreibung:", desc_edit)
+
+        has_interior_check = QCheckBox()
+        has_interior_check.setChecked(loc.has_interior)
+        form.addRow("Hat Innenansicht:", has_interior_check)
+
+        ext_edit = QLineEdit(loc.exterior_image or "")
+        ext_btn = QPushButton("...")
+        ext_btn.clicked.connect(lambda: ext_edit.setText(
+            QFileDialog.getOpenFileName(dialog, "Außenbild", str(IMAGES_DIR), "Bilder (*.png *.jpg *.jpeg *.bmp)")[0] or ext_edit.text()
+        ))
+        ext_layout = QHBoxLayout()
+        ext_layout.addWidget(ext_edit)
+        ext_layout.addWidget(ext_btn)
+        form.addRow("Außenbild:", ext_layout)
+
+        int_edit = QLineEdit(loc.interior_image or "")
+        int_btn = QPushButton("...")
+        int_btn.clicked.connect(lambda: int_edit.setText(
+            QFileDialog.getOpenFileName(dialog, "Innenbild", str(IMAGES_DIR), "Bilder (*.png *.jpg *.jpeg *.bmp)")[0] or int_edit.text()
+        ))
+        int_layout = QHBoxLayout()
+        int_layout.addWidget(int_edit)
+        int_layout.addWidget(int_btn)
+        form.addRow("Innenbild:", int_layout)
+
+        ambient_edit = QLineEdit(loc.ambient_sound or "")
+        form.addRow("Ambient-Sound:", ambient_edit)
+
+        bg_music_edit = QLineEdit(loc.background_music or "")
+        form.addRow("Hintergrundmusik:", bg_music_edit)
+
+        dlayout.addLayout(form)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        dlayout.addWidget(buttons)
+
+        if dialog.exec() == QDialog.Accepted:
+            loc.name = name_edit.text()
+            loc.description = desc_edit.toPlainText()
+            loc.has_interior = has_interior_check.isChecked()
+            loc.exterior_image = ext_edit.text() or None
+            loc.interior_image = int_edit.text() or None
+            loc.ambient_sound = ambient_edit.text() or None
+            loc.background_music = bg_music_edit.text() or None
+            self.data_manager.save_world(world)
+            self.refresh_locations_tree()
+
+    def edit_character(self):
+        """Bearbeitet den ausgewählten Charakter"""
+        session = self.data_manager.current_session
+        if not session:
+            return
+        row = self.char_table.currentRow()
+        if row < 0:
+            QMessageBox.warning(self, "Fehler", "Kein Charakter ausgewählt!")
+            return
+        char_list = list(session.characters.values())
+        if row >= len(char_list):
+            return
+        char = char_list[row]
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f"Charakter bearbeiten: {char.name}")
+        dialog.setMinimumSize(400, 500)
+        dlayout = QVBoxLayout(dialog)
+
+        form = QFormLayout()
+        name_edit = QLineEdit(char.name)
+        form.addRow("Name:", name_edit)
+        player_edit = QLineEdit(char.player_name or "")
+        form.addRow("Spieler:", player_edit)
+        race_edit = QLineEdit(char.race)
+        form.addRow("Rasse:", race_edit)
+        prof_edit = QLineEdit(char.profession)
+        form.addRow("Beruf:", prof_edit)
+        level_spin = QSpinBox()
+        level_spin.setRange(1, 100)
+        level_spin.setValue(char.level)
+        form.addRow("Level:", level_spin)
+        hp_spin = QSpinBox()
+        hp_spin.setRange(1, 9999)
+        hp_spin.setValue(char.max_health)
+        form.addRow("Max. Leben:", hp_spin)
+        hp_cur_spin = QSpinBox()
+        hp_cur_spin.setRange(0, 9999)
+        hp_cur_spin.setValue(char.health)
+        form.addRow("Akt. Leben:", hp_cur_spin)
+        mana_spin = QSpinBox()
+        mana_spin.setRange(0, 9999)
+        mana_spin.setValue(char.max_mana)
+        form.addRow("Max. Mana:", mana_spin)
+        mana_cur_spin = QSpinBox()
+        mana_cur_spin.setRange(0, 9999)
+        mana_cur_spin.setValue(char.mana)
+        form.addRow("Akt. Mana:", mana_cur_spin)
+        npc_check = QCheckBox()
+        npc_check.setChecked(char.is_npc)
+        form.addRow("NPC:", npc_check)
+
+        # Charakter-Bild
+        img_edit = QLineEdit(char.image_path or "")
+        img_btn = QPushButton("...")
+        img_btn.clicked.connect(lambda: img_edit.setText(
+            QFileDialog.getOpenFileName(dialog, "Charakterbild", str(IMAGES_DIR),
+                "Bilder (*.png *.jpg *.jpeg *.bmp)")[0] or img_edit.text()
+        ))
+        img_layout = QHBoxLayout()
+        img_layout.addWidget(img_edit)
+        img_layout.addWidget(img_btn)
+        form.addRow("Bild:", img_layout)
+
+        # Vorschau
+        img_preview = QLabel()
+        img_preview.setFixedSize(100, 100)
+        img_preview.setAlignment(Qt.AlignCenter)
+        img_preview.setStyleSheet("border: 1px solid #555; border-radius: 5px;")
+        if char.image_path and Path(char.image_path).exists():
+            px = QPixmap(char.image_path).scaled(96, 96, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            img_preview.setPixmap(px)
+        else:
+            img_preview.setText("Kein Bild")
+        form.addRow("", img_preview)
+        # Live-Vorschau bei Pfadaenderung
+        def _update_preview(text):
+            if text and Path(text).exists():
+                px = QPixmap(text).scaled(96, 96, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                img_preview.setPixmap(px)
+            else:
+                img_preview.clear()
+                img_preview.setText("Kein Bild")
+        img_edit.textChanged.connect(_update_preview)
+
+        bio_edit = QTextEdit()
+        bio_edit.setPlainText(char.biography)
+        bio_edit.setMaximumHeight(80)
+        form.addRow("Biografie:", bio_edit)
+        dlayout.addLayout(form)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        dlayout.addWidget(buttons)
+
+        if dialog.exec() == QDialog.Accepted:
+            char.name = name_edit.text()
+            char.player_name = player_edit.text() or None
+            char.race = race_edit.text()
+            char.profession = prof_edit.text()
+            char.level = level_spin.value()
+            char.max_health = hp_spin.value()
+            char.health = hp_cur_spin.value()
+            char.max_mana = mana_spin.value()
+            char.mana = mana_cur_spin.value()
+            char.is_npc = npc_check.isChecked()
+            char.image_path = img_edit.text() or None
+            char.biography = bio_edit.toPlainText()
+            self.data_manager.save_session(session)
+            self.refresh_character_table()
+            self.refresh_character_panel()
+            self.prompt_widget.update_characters(session.characters)
+
+    def delete_character(self):
+        """Löscht den ausgewählten Charakter"""
+        session = self.data_manager.current_session
+        if not session:
+            return
+        row = self.char_table.currentRow()
+        if row < 0:
+            QMessageBox.warning(self, "Fehler", "Kein Charakter ausgewählt!")
+            return
+        char_list = list(session.characters.keys())
+        if row >= len(char_list):
+            return
+        char_id = char_list[row]
+        char_name = session.characters[char_id].name
+
+        reply = QMessageBox.question(
+            self, "Charakter löschen",
+            f"'{char_name}' wirklich löschen?",
+            QMessageBox.Yes | QMessageBox.No
+        )
+        if reply == QMessageBox.Yes:
+            del session.characters[char_id]
+            # Aus Turn-Order entfernen
+            if char_id in session.turn_order:
+                session.turn_order.remove(char_id)
+            self.data_manager.save_session(session)
+            self.refresh_character_table()
+            self.refresh_character_panel()
+            self.prompt_widget.update_characters(session.characters)
+
+    def add_character_to_session(self):
+        """Fügt einen existierenden Charakter zur aktuellen Session hinzu"""
+        session = self.data_manager.current_session
+        if not session:
+            QMessageBox.warning(self, "Fehler", "Keine aktive Session!")
+            return
+        # Neuen Charakter erstellen und zur Session hinzufügen
+        self.create_character()
+
+    def _get_selected_character(self):
+        """Gibt den in der Tabelle ausgewählten Charakter zurück (oder None)"""
+        session = self.data_manager.current_session
+        if not session:
+            return None, None
+        row = self.char_table.currentRow()
+        if row < 0:
+            QMessageBox.warning(self, "Fehler", "Kein Charakter ausgewählt!")
+            return None, None
+        char_list = list(session.characters.values())
+        if row >= len(char_list):
+            return None, None
+        return session, char_list[row]
+
+    def deal_damage(self):
+        """Zieht einem Charakter Leben ab"""
+        session, char = self._get_selected_character()
+        if not char:
+            return
+        amount, ok = QInputDialog.getInt(
+            self, "Schaden", f"Schaden an {char.name}:", 10, 1, 9999)
+        if ok:
+            old_hp = char.health
+            char.health = max(0, char.health - amount)
+            self.data_manager.save_session(session)
+            self.refresh_character_table()
+            self.refresh_character_panel()
+            msg = ChatMessage(
+                role=MessageRole.SYSTEM,
+                author="System",
+                content=f"💔 {char.name} erleidet {amount} Schaden! ({old_hp} -> {char.health}/{char.max_health})"
+            )
+            self.chat_widget.add_message(msg)
+            session.chat_history.append(msg)
+            # Event an PlayerScreen
+            self._route_to_player_screen(PlayerEvent(
+                event_type="character_damaged",
+                data={"char_id": char.id, "char_name": char.name, "amount": amount,
+                      "all_characters": self._collect_player_chars(session)},
+                source_tab="characters"))
+            if char.health == 0:
+                death_msg = ChatMessage(
+                    role=MessageRole.NARRATOR,
+                    author="Erzähler",
+                    content=f"☠️ {char.name} ist bewusstlos/tot! (0 HP)"
+                )
+                self.chat_widget.add_message(death_msg)
+                session.chat_history.append(death_msg)
+                self._route_to_player_screen(PlayerEvent(
+                    event_type="character_died",
+                    data={"char_id": char.id, "char_name": char.name,
+                          "all_characters": self._collect_player_chars(session)},
+                    source_tab="characters"))
+
+    def heal_character(self):
+        """Heilt einen Charakter"""
+        session, char = self._get_selected_character()
+        if not char:
+            return
+        max_heal = char.max_health - char.health
+        if max_heal <= 0:
+            QMessageBox.information(self, "Voll", f"{char.name} hat bereits volle Lebenspunkte!")
+            return
+        amount, ok = QInputDialog.getInt(
+            self, "Heilung", f"Heilung für {char.name}:", min(10, max_heal), 1, max_heal)
+        if ok:
+            old_hp = char.health
+            char.health = min(char.max_health, char.health + amount)
+            self.data_manager.save_session(session)
+            self.refresh_character_table()
+            self.refresh_character_panel()
+            msg = ChatMessage(
+                role=MessageRole.SYSTEM,
+                author="System",
+                content=f"💚 {char.name} wird um {amount} geheilt! ({old_hp} -> {char.health}/{char.max_health})"
+            )
+            self.chat_widget.add_message(msg)
+            session.chat_history.append(msg)
+            # Event an PlayerScreen
+            self._route_to_player_screen(PlayerEvent(
+                event_type="character_healed",
+                data={"char_id": char.id, "char_name": char.name, "amount": amount,
+                      "all_characters": self._collect_player_chars(session)},
+                source_tab="characters"))
+
+    def drain_mana(self):
+        """Zieht einem Charakter Mana ab"""
+        session, char = self._get_selected_character()
+        if not char:
+            return
+        amount, ok = QInputDialog.getInt(
+            self, "Mana abziehen", f"Mana-Kosten für {char.name}:", 10, 1, 9999)
+        if ok:
+            old_mana = char.mana
+            char.mana = max(0, char.mana - amount)
+            self.data_manager.save_session(session)
+            self.refresh_character_table()
+            self.refresh_character_panel()
+            msg = ChatMessage(
+                role=MessageRole.SYSTEM,
+                author="System",
+                content=f"💧 {char.name} verbraucht {amount} Mana! ({old_mana} -> {char.mana}/{char.max_mana})"
+            )
+            self.chat_widget.add_message(msg)
+            session.chat_history.append(msg)
+
+    def restore_mana(self):
+        """Füllt Mana eines Charakters auf"""
+        session, char = self._get_selected_character()
+        if not char:
+            return
+        max_restore = char.max_mana - char.mana
+        if max_restore <= 0:
+            QMessageBox.information(self, "Voll", f"{char.name} hat bereits volles Mana!")
+            return
+        amount, ok = QInputDialog.getInt(
+            self, "Mana auffüllen", f"Mana für {char.name}:", min(10, max_restore), 1, max_restore)
+        if ok:
+            old_mana = char.mana
+            char.mana = min(char.max_mana, char.mana + amount)
+            self.data_manager.save_session(session)
+            self.refresh_character_table()
+            self.refresh_character_panel()
+            msg = ChatMessage(
+                role=MessageRole.SYSTEM,
+                author="System",
+                content=f"💧 {char.name} erhält {amount} Mana! ({old_mana} -> {char.mana}/{char.max_mana})"
+            )
+            self.chat_widget.add_message(msg)
+            session.chat_history.append(msg)
+
+    def complete_mission(self):
+        """Schließt die ausgewählte Mission ab"""
+        session = self.data_manager.current_session
+        if not session:
+            return
+        item = self.active_missions_list.currentItem()
+        if not item:
+            QMessageBox.warning(self, "Fehler", "Keine Mission ausgewählt!")
+            return
+        # Mission anhand des Index finden
+        idx = self.active_missions_list.currentRow()
+        active_missions = [m for m in session.active_missions.values() if m.status == MissionStatus.ACTIVE]
+        if idx < 0 or idx >= len(active_missions):
+            return
+        mission = active_missions[idx]
+        mission.status = MissionStatus.COMPLETED
+        session.completed_missions.append(mission.id)
+        self.data_manager.save_session(session)
+        self.refresh_missions_list()
+
+        msg = ChatMessage(
+            role=MessageRole.SYSTEM,
+            author="System",
+            content=f"Mission abgeschlossen: {mission.name}"
+        )
+        self.chat_widget.add_message(msg)
+        session.chat_history.append(msg)
+        # Event an PlayerScreen
+        active = [{"name": m.name, "status": m.status.value}
+                  for m in session.active_missions.values() if m.status == MissionStatus.ACTIVE]
+        self._route_to_player_screen(PlayerEvent(
+            event_type="mission_completed",
+            data={"name": mission.name, "all_missions": active},
+            source_tab="missions"))
+
+    def fail_mission(self):
+        """Markiert die ausgewählte Mission als gescheitert"""
+        session = self.data_manager.current_session
+        if not session:
+            return
+        item = self.active_missions_list.currentItem()
+        if not item:
+            QMessageBox.warning(self, "Fehler", "Keine Mission ausgewählt!")
+            return
+        idx = self.active_missions_list.currentRow()
+        active_missions = [m for m in session.active_missions.values() if m.status == MissionStatus.ACTIVE]
+        if idx < 0 or idx >= len(active_missions):
+            return
+        mission = active_missions[idx]
+        mission.status = MissionStatus.FAILED
+        self.data_manager.save_session(session)
+        self.refresh_missions_list()
+
+        msg = ChatMessage(
+            role=MessageRole.SYSTEM,
+            author="System",
+            content=f"Mission gescheitert: {mission.name}"
+        )
+        self.chat_widget.add_message(msg)
+        session.chat_history.append(msg)
+        # Event an PlayerScreen
+        active = [{"name": m.name, "status": m.status.value}
+                  for m in session.active_missions.values() if m.status == MissionStatus.ACTIVE]
+        self._route_to_player_screen(PlayerEvent(
+            event_type="mission_failed",
+            data={"name": mission.name, "all_missions": active},
+            source_tab="missions"))
+
+    def refresh_character_panel(self):
+        """Aktualisiert das linke Charakter-Panel mit CharacterWidgets"""
+        if not hasattr(self, 'character_list'):
+            return
+        # Alte Widgets entfernen
+        while self.character_list.count():
+            item = self.character_list.takeAt(0)
+            widget = item.widget()
+            if widget:
+                widget.deleteLater()
+
+        session = self.data_manager.current_session
+        if not session:
+            return
+
+        for char in session.characters.values():
+            if not char.is_npc:
+                widget = CharacterWidget(char)
+                self.character_list.addWidget(widget)
+
+    def refresh_combat_lists(self):
+        """Aktualisiert Waffen- und Zauberlisten im Kampf-Tab"""
+        if not hasattr(self, 'weapons_list') or not hasattr(self, 'spells_list'):
+            return
+        world = self.data_manager.current_world
+        self.weapons_list.clear()
+        self.spells_list.clear()
+        if not world:
+            return
+        for weapon in world.weapons.values():
+            self.weapons_list.addItem(f"⚔️ {weapon.name}")
+        for spell in world.spells.values():
+            self.spells_list.addItem(f"✨ {spell.name}")
+
+    def _refresh_world_map(self):
+        """Aktualisiert die interaktive Kartenansicht im Welt-Tab"""
+        if not hasattr(self, 'world_map_widget'):
+            return
+        world = self.data_manager.current_world
+        session = self.data_manager.current_session
+
+        # Karte laden
+        map_path = world.map_image if world else None
+        self.world_map_widget.load_map(map_path)
+
+        # Ort-Marker setzen
+        if world:
+            locs = {}
+            for loc_id, loc in world.locations.items():
+                locs[loc_id] = {
+                    "name": loc.name,
+                    "map_position": loc.map_position
+                }
+            self.world_map_widget.set_locations(locs)
+
+        # Charakter-Marker setzen
+        if session:
+            chars = {}
+            for i, (cid, char) in enumerate(session.characters.items()):
+                if not char.is_npc:
+                    chars[cid] = {
+                        "name": char.name,
+                        "map_x": 50 + i * 60,
+                        "map_y": 50
+                    }
+            self.world_map_widget.set_characters(chars)
+
+    def _load_settings_from_session(self):
+        """Lädt Session-/Welt-Einstellungen in den Einstellungen-Tab"""
+        if not hasattr(self, 'round_based_check'):
+            return
+        session = self.data_manager.current_session
+        world = self.data_manager.current_world
+
+        if session:
+            self.round_based_check.setChecked(session.is_round_based)
+            self.actions_spin.setValue(session.actions_per_turn)
+            self.actions_spin.setEnabled(session.is_round_based)
+            self.turn_panel.setVisible(session.is_round_based)
+            self.gm_human_check.setChecked(session.gm_is_human)
+            self.gm_name_edit.setText(session.gm_player_name)
+
+        if world:
+            self.time_ratio_spin.setValue(world.settings.time_ratio)
+            self.day_hours_spin.setValue(world.settings.day_hours)
+            self.daylight_spin.setValue(world.settings.daylight_hours)
+            self.hunger_check.setChecked(world.settings.simulate_hunger)
+            self.disasters_check.setChecked(world.settings.simulate_disasters)
 
     def show_about(self):
         """Zeigt About-Dialog"""
