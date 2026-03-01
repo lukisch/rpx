@@ -41,21 +41,17 @@ rpx_pro_data/media/images/*
 rpx_pro_data/media/maps/*
 rpx_pro_data/config.json
 
-rpx_light_data/worlds/*.json
-rpx_light_data/sessions/*.json
-rpx_light_data/characters/*.json
-rpx_light_data/backups/*
-rpx_light_data/media/sounds/*
-rpx_light_data/media/music/*
-rpx_light_data/media/images/*
-rpx_light_data/media/maps/*
-rpx_light_data/config.json
-
 # Keep directory structure
 !**/.gitkeep
 
+# Lokale Notizen
+AUFGABEN.txt
+
 # Archiv (alte Entwicklungshistorie)
 Archiv/
+ultimate_rpg_project/
+releases/
+rpx_light_data/
 
 # Excel-Arbeitsdateien
 *.xlsx

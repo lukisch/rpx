@@ -17,19 +17,6 @@ Ein professionelles Rollenspiel-Kontrollzentrum fuer Pen & Paper Abenteuer. Offl
 | **Charaktere** | Attribute, Inventar, Hunger/Durst-Simulation |
 | **Wuerfelsystem** | Konfigurierbar (NdX), Chat-Integration |
 
-## Editionen
-
-| Feature | RPX Light | RPX Pro |
-|---------|:---------:|:-------:|
-| Welten & Orte | x | x |
-| Soundboard & Lichteffekte | x | x |
-| Wuerfelsystem | x | x |
-| KI-Prompts | 5 Rollen | 7 Rollen |
-| Waffen/Ruestungen/Magie | - | x |
-| Trigger-System | - | x |
-| Spieler-Bildschirm | - | x |
-| Regelwerk-Import | - | x |
-
 ## Installation
 
 ```bash
@@ -73,8 +60,8 @@ Der GM kann einen separaten Bildschirm fuer Spieler oeffnen (Einstellungen-Tab):
 
 ## Markt-Vergleich
 
-| Feature | RPX Pro | Roll20 | Foundry VTT | Fantasy Grounds |
-|---------|:-------:|:------:|:-----------:|:---------------:|
+| Feature | RPX | Roll20 | Foundry VTT | Fantasy Grounds |
+|---------|:---:|:------:|:-----------:|:---------------:|
 | Offline-faehig | x | - | x | x |
 | Lichteffekte | x | - | ~ | - |
 | KI-Integration | x | - | ~ | - |

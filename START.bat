@@ -1,5 +1,5 @@
 @echo off
-title RPX Pro - RolePlay Xtreme
+title RPX - RolePlay Xtreme
 cd /d "%~dp0"
 
 REM Pruefe ob Python verfuegbar ist
@@ -24,12 +24,12 @@ if errorlevel 1 (
 REM Setze Encoding fuer Windows
 set PYTHONIOENCODING=utf-8
 
-REM Starte RPX Pro
+REM Starte RPX
 python "RPX_Pro_1.py"
 
 if errorlevel 1 (
     echo.
-    echo  RPX Pro wurde mit einem Fehler beendet.
+    echo  RPX wurde mit einem Fehler beendet.
     echo  Details in: rpx_pro_data\rpx_pro.log
     echo.
     pause
