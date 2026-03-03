@@ -5,8 +5,8 @@ import logging
 from pathlib import Path
 from typing import Dict, Any, Optional
 
+import rpx_pro.constants as _const
 from rpx_pro.constants import (
-    HAS_AUDIO, AUDIO_BACKEND,
     _HAS_QMEDIAPLAYER, _HAS_PYGAME, _HAS_WINSOUND,
     MUSIC_DIR, SOUNDS_DIR,
 )
@@ -29,11 +29,11 @@ class AudioManager:
 
     def _init_audio(self):
         """Initialisiert Audio-System"""
-        if not HAS_AUDIO:
+        if not _const.HAS_AUDIO:
             logger.warning("Audio nicht verfuegbar")
             return
 
-        if AUDIO_BACKEND == "QtMultimedia" and _HAS_QMEDIAPLAYER:
+        if _const.AUDIO_BACKEND == "QtMultimedia" and _HAS_QMEDIAPLAYER:
             try:
                 from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
                 self.music_player = QMediaPlayer()
@@ -43,14 +43,14 @@ class AudioManager:
                 logger.info("Audio-System initialisiert (QtMultimedia)")
             except Exception as e:
                 logger.error(f"Audio-Initialisierung fehlgeschlagen: {e}")
-        elif AUDIO_BACKEND == "pygame" and _HAS_PYGAME:
+        elif _const.AUDIO_BACKEND == "pygame" and _HAS_PYGAME:
             logger.info("Audio-System initialisiert (pygame)")
         else:
-            logger.info(f"Audio-System initialisiert ({AUDIO_BACKEND})")
+            logger.info(f"Audio-System initialisiert ({_const.AUDIO_BACKEND})")
 
     def play_music(self, file_path: str, loop: bool = True):
         """Spielt Hintergrundmusik"""
-        if not HAS_AUDIO:
+        if not _const.HAS_AUDIO:
             return
 
         try:
@@ -60,13 +60,13 @@ class AudioManager:
             if not path.exists():
                 return
 
-            if AUDIO_BACKEND == "QtMultimedia" and self.music_player:
+            if _const.AUDIO_BACKEND == "QtMultimedia" and self.music_player:
                 from PySide6.QtCore import QUrl
                 self.music_player.setSource(QUrl.fromLocalFile(str(path)))
                 if loop:
                     self.music_player.setLoops(-1)
                 self.music_player.play()
-            elif AUDIO_BACKEND == "pygame" and _HAS_PYGAME:
+            elif _const.AUDIO_BACKEND == "pygame" and _HAS_PYGAME:
                 import pygame
                 pygame.mixer.music.load(str(path))
                 pygame.mixer.music.set_volume(self.music_volume)
@@ -77,9 +77,9 @@ class AudioManager:
 
     def stop_music(self):
         """Stoppt Hintergrundmusik"""
-        if AUDIO_BACKEND == "QtMultimedia" and self.music_player:
+        if _const.AUDIO_BACKEND == "QtMultimedia" and self.music_player:
             self.music_player.stop()
-        elif AUDIO_BACKEND == "pygame" and _HAS_PYGAME:
+        elif _const.AUDIO_BACKEND == "pygame" and _HAS_PYGAME:
             try:
                 import pygame
                 pygame.mixer.music.stop()
@@ -88,7 +88,7 @@ class AudioManager:
 
     def play_sound(self, file_path: str, volume: float = None):
         """Spielt einen Sound-Effekt"""
-        if not HAS_AUDIO:
+        if not _const.HAS_AUDIO:
             return
 
         try:
@@ -98,9 +98,9 @@ class AudioManager:
             if not path.exists():
                 return
 
-            vol = volume or self.sound_volume
+            vol = volume if volume is not None else self.sound_volume
 
-            if AUDIO_BACKEND == "QtMultimedia" and _HAS_QMEDIAPLAYER:
+            if _const.AUDIO_BACKEND == "QtMultimedia" and _HAS_QMEDIAPLAYER:
                 from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
                 from PySide6.QtCore import QUrl
                 player = QMediaPlayer()
@@ -116,12 +116,12 @@ class AudioManager:
                 player.mediaStatusChanged.connect(
                     lambda status, sid=sound_id: self._cleanup_sound(sid, status)
                 )
-            elif AUDIO_BACKEND == "pygame" and _HAS_PYGAME:
+            elif _const.AUDIO_BACKEND == "pygame" and _HAS_PYGAME:
                 import pygame
                 snd = pygame.mixer.Sound(str(path))
                 snd.set_volume(vol)
                 snd.play()
-            elif AUDIO_BACKEND == "winsound" and _HAS_WINSOUND:
+            elif _const.AUDIO_BACKEND == "winsound" and _HAS_WINSOUND:
                 import winsound
                 if str(path).lower().endswith('.wav'):
                     winsound.PlaySound(str(path), winsound.SND_FILENAME | winsound.SND_ASYNC)

@@ -585,6 +585,8 @@ class PlayerScreen(QMainWindow):
         browser.setHtml(html)
 
     def _refresh_turn_display(self):
+        if not hasattr(self, "tile_round_label"):
+            return
         info = self._turn_info
         self.tile_round_label.setText(f"Runde: {info.get('round', '-')}")
         self.tile_current_turn.setText(f"Aktuell: {info.get('current_name', '-')}")

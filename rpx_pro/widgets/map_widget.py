@@ -435,7 +435,7 @@ class MapWidget(QWidget):
             elif etype == "image":
                 elem.image_path = item.data(2) or ""
                 pm = item.pixmap()
-                if pm:
+                if not pm.isNull():
                     elem.width = pm.width()
                     elem.height = pm.height()
             result[elem_id] = elem

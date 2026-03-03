@@ -481,13 +481,14 @@ class RPXProMainWindow(QMainWindow):
 
     def _on_dice_rolled(self, result_text: str):
         session = self.data_manager.current_session
+        if not session:
+            return
         msg = ChatMessage(
             role=MessageRole.SYSTEM, author="Wuerfel",
-            content=f"{result_text}"
+            content=result_text
         )
         self.chat_widget.add_message(msg)
-        if session:
-            session.chat_history.append(msg)
+        session.chat_history.append(msg)
 
     def _on_attack_executed(self, data: dict):
         session = self.data_manager.current_session
@@ -495,7 +496,7 @@ class RPXProMainWindow(QMainWindow):
             return
         msg = ChatMessage(
             role=MessageRole.SYSTEM, author="Kampf",
-            content=data["result_text"]
+            content=data.get("result_text", "")
         )
         self.chat_widget.add_message(msg)
         session.chat_history.append(msg)
@@ -804,9 +805,10 @@ class RPXProMainWindow(QMainWindow):
 
         screens = QApplication.screens()
         monitor_idx = self.data_manager.config.get("player_screen_monitor", 1)
-        if monitor_idx < len(screens):
-            screen = screens[monitor_idx]
-            self.player_screen.setGeometry(screen.geometry())
+        if monitor_idx >= len(screens):
+            monitor_idx = 0
+        screen = screens[monitor_idx]
+        self.player_screen.setGeometry(screen.geometry())
 
         if len(screens) > 1:
             self.player_screen.showFullScreen()
@@ -867,9 +869,7 @@ class RPXProMainWindow(QMainWindow):
             elif world.map_image:
                 active_bg = world.map_image
         if active_bg:
-            self.player_screen._map_path = active_bg
-            if self.player_screen._mode == PlayerScreenMode.MAP:
-                self.player_screen._refresh_map_widget()
+            self.player_screen.show_map_image(active_bg)
             if active_elements:
                 self.player_screen.ps_map_widget.load_elements(active_elements)
                 self.player_screen.rot_map_widget.load_elements(active_elements)
@@ -1044,7 +1044,8 @@ class RPXProMainWindow(QMainWindow):
                         content=f"{char.name} ist {level}! (Durst: {int(char.thirst)}%)")
                     self.chat_widget.add_message(msg)
                     session.chat_history.append(msg)
-                changed = True
+                if char.hunger != old_hunger or char.thirst != old_thirst:
+                    changed = True
 
         if world.settings.simulate_disasters:
             if random.random() < world.settings.disaster_probability * game_hours_per_tick:
@@ -1064,6 +1065,7 @@ class RPXProMainWindow(QMainWindow):
 
         if world.settings.simulate_time:
             world.settings.current_time += game_hours_per_tick
+            changed = True
             if world.settings.current_time >= world.settings.day_hours:
                 world.settings.current_time -= world.settings.day_hours
                 world.settings.current_day += 1

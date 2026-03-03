@@ -244,12 +244,10 @@ class WorldTab(QWidget):
         if loc_id and loc_id in world.locations:
             self.location_selected.emit(loc_id)
 
-    def _on_location_clicked(self, item, column=None):
+    def _on_location_clicked(self, loc_id: str):
         """Wird aufgerufen wenn ein Ort auf der Karte angeklickt wird."""
-        if hasattr(item, 'data'):
-            loc_id = item.data(0, Qt.UserRole)
-            if loc_id:
-                self.location_selected.emit(loc_id)
+        if loc_id:
+            self.location_selected.emit(loc_id)
 
     def create_new_world(self):
         name, ok = QInputDialog.getText(self, "Neue Welt", "Name der Welt:")

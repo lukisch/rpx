@@ -203,6 +203,9 @@ class CombatTab(QWidget):
             else:
                 base_dmg = random.randint(1, 4)
                 crit = hit_roll >= 20
+                if crit:
+                    base_dmg *= 2
+                    lines.append("KRITISCHER TREFFER! (x2)")
 
             str_bonus = (attacker.strength - 10) // 2
             total_dmg = max(0, base_dmg + str_bonus)

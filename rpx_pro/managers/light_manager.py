@@ -101,9 +101,15 @@ class LightEffectManager(QObject):
         if not self.overlay or not sequence:
             return
 
+        self._sequence_id = getattr(self, '_sequence_id', 0) + 1
+        current_seq = self._sequence_id
         self.overlay.show()
 
         def apply_step(index):
+            if self._sequence_id != current_seq:
+                return
+            if not self.overlay:
+                return
             if index >= len(sequence):
                 self.overlay.hide()
                 self.effect_finished.emit(self.current_effect)

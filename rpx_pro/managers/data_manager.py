@@ -144,6 +144,8 @@ class DataManager:
             if path.exists():
                 path.rename(backup_path)
             del self.worlds[world_id]
+            if self.current_world and self.current_world.id == world_id:
+                self.current_world = None
             return True
         except Exception as e:
             logger.error(f"Fehler beim Loeschen: {e}")
@@ -159,6 +161,8 @@ class DataManager:
             if path.exists():
                 path.rename(backup_path)
             del self.sessions[session_id]
+            if self.current_session and self.current_session.id == session_id:
+                self.current_session = None
             return True
         except Exception as e:
             logger.error(f"Fehler beim Loeschen: {e}")

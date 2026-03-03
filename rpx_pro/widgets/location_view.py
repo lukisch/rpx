@@ -137,7 +137,7 @@ class LocationViewWidget(QWidget):
 
         self.location_exited.emit(self.current_location.id)
 
-        if self.current_location.exterior_image:
+        if self.current_location.exterior_image and Path(self.current_location.exterior_image).exists():
             pixmap = QPixmap(self.current_location.exterior_image)
             pixmap = pixmap.scaled(self.image_label.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
             self.image_label.setPixmap(pixmap)

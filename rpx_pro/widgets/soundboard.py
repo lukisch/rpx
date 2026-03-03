@@ -108,7 +108,16 @@ class SoundboardWidget(QWidget):
         )
         if ok and name in self.sound_buttons:
             btn = self.sound_buttons.pop(name)
+            self.button_grid.removeWidget(btn)
             btn.deleteLater()
+            self._rebuild_grid()
+
+    def _rebuild_grid(self):
+        """Baut das Grid-Layout nach Entfernen eines Sounds neu auf."""
+        for btn in self.sound_buttons.values():
+            self.button_grid.removeWidget(btn)
+        for i, btn in enumerate(self.sound_buttons.values()):
+            self.button_grid.addWidget(btn, i // 3, i % 3)
 
     def _on_volume_change(self, value):
         self.audio.set_sound_volume(value / 100)

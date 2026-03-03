@@ -147,6 +147,7 @@ class CharacterWidget(QWidget):
         """Oeffnet Inventar-Dialog (kann von aussen mit world aufgerufen werden)"""
         if not self.character:
             return
+        self._last_world = world
 
         dialog = QDialog(self)
         dialog.setWindowTitle(f"Inventar - {self.character.name}")
@@ -187,4 +188,4 @@ class CharacterWidget(QWidget):
             if self.character.inventory[item_id] <= 0:
                 del self.character.inventory[item_id]
             dialog.accept()
-            self.open_inventory()
+            self.open_inventory(world=self._last_world)

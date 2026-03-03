@@ -20,6 +20,8 @@ class DiceRoller:
 
     def roll(self, rule_id: str = None, dice_count: int = 1, dice_sides: int = 20) -> Dict[str, Any]:
         """Wuerfelt nach Regel oder frei"""
+        dice_count = max(1, dice_count)
+        dice_sides = max(1, dice_sides)
         rolls = [random.randint(1, dice_sides) for _ in range(dice_count)]
         total = sum(rolls)
 
