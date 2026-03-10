@@ -432,96 +432,65 @@ class RPXProMainWindow(QMainWindow):
             self.views_tab.refresh_inventory_combos()
             self._sync_player_screen_data()
 
-    def _on_damage_dealt(self, char_id: str, char_name: str, amount: int):
+    def _add_chat_message(self, content: str, role: MessageRole = MessageRole.SYSTEM,
+                          author: str = "System") -> Optional[ChatMessage]:
+        """Erzeugt eine ChatMessage, zeigt sie an und haengt sie an die Session-History."""
         session = self.data_manager.current_session
         if not session:
-            return
-        msg = ChatMessage(
-            role=MessageRole.SYSTEM, author="System",
-            content=f"{char_name} erleidet {amount} Schaden!"
-        )
+            return None
+        msg = ChatMessage(role=role, author=author, content=content)
         self.chat_widget.add_message(msg)
         session.chat_history.append(msg)
+        return msg
+
+    def _on_damage_dealt(self, char_id: str, char_name: str, amount: int):
+        if not self._add_chat_message(f"{char_name} erleidet {amount} Schaden!"):
+            return
         self._route_to_player_screen(PlayerEvent(
             event_type="character_damaged",
             data={"char_id": char_id, "char_name": char_name, "amount": amount,
-                  "all_characters": self._collect_player_chars(session)},
+                  "all_characters": self._collect_player_chars(self.data_manager.current_session)},
             source_tab="characters"))
 
     def _on_character_healed(self, char_id: str, char_name: str, amount: int):
-        session = self.data_manager.current_session
-        if not session:
+        if not self._add_chat_message(f"{char_name} wird um {amount} geheilt!"):
             return
-        msg = ChatMessage(
-            role=MessageRole.SYSTEM, author="System",
-            content=f"{char_name} wird um {amount} geheilt!"
-        )
-        self.chat_widget.add_message(msg)
-        session.chat_history.append(msg)
         self._route_to_player_screen(PlayerEvent(
             event_type="character_healed",
             data={"char_id": char_id, "char_name": char_name, "amount": amount,
-                  "all_characters": self._collect_player_chars(session)},
+                  "all_characters": self._collect_player_chars(self.data_manager.current_session)},
             source_tab="characters"))
 
     def _on_character_died(self, char_id: str, char_name: str):
-        session = self.data_manager.current_session
-        if not session:
+        if not self._add_chat_message(
+                f"{char_name} ist bewusstlos/tot! (0 HP)",
+                role=MessageRole.NARRATOR, author="Erzaehler"):
             return
-        msg = ChatMessage(
-            role=MessageRole.NARRATOR, author="Erzaehler",
-            content=f"{char_name} ist bewusstlos/tot! (0 HP)"
-        )
-        self.chat_widget.add_message(msg)
-        session.chat_history.append(msg)
         self._route_to_player_screen(PlayerEvent(
             event_type="character_died",
             data={"char_id": char_id, "char_name": char_name,
-                  "all_characters": self._collect_player_chars(session)},
+                  "all_characters": self._collect_player_chars(self.data_manager.current_session)},
             source_tab="characters"))
 
     def _on_dice_rolled(self, result_text: str):
-        session = self.data_manager.current_session
-        if not session:
-            return
-        msg = ChatMessage(
-            role=MessageRole.SYSTEM, author="Wuerfel",
-            content=result_text
-        )
-        self.chat_widget.add_message(msg)
-        session.chat_history.append(msg)
+        self._add_chat_message(result_text, author="Wuerfel")
 
     def _on_attack_executed(self, data: dict):
-        session = self.data_manager.current_session
-        if not session:
+        if not self._add_chat_message(data.get("result_text", ""), author="Kampf"):
             return
-        msg = ChatMessage(
-            role=MessageRole.SYSTEM, author="Kampf",
-            content=data.get("result_text", "")
-        )
-        self.chat_widget.add_message(msg)
-        session.chat_history.append(msg)
         self.characters_tab.refresh_character_table()
 
         if data.get("is_hit"):
-            all_chars = self._collect_player_chars(session)
             self._route_to_player_screen(PlayerEvent(
                 event_type="character_damaged",
                 data={"char_id": data["defender_id"], "char_name": data["defender_name"],
                       "amount": data["damage"],
-                      "all_characters": all_chars},
+                      "all_characters": self._collect_player_chars(self.data_manager.current_session)},
                 source_tab="combat"))
 
     def _on_mission_completed(self, name: str):
-        session = self.data_manager.current_session
-        if not session:
+        if not self._add_chat_message(f"Mission abgeschlossen: {name}"):
             return
-        msg = ChatMessage(
-            role=MessageRole.SYSTEM, author="System",
-            content=f"Mission abgeschlossen: {name}"
-        )
-        self.chat_widget.add_message(msg)
-        session.chat_history.append(msg)
         active = self.missions_tab.get_active_missions_data()
         self._route_to_player_screen(PlayerEvent(
             event_type="mission_completed",
@@ -529,15 +498,8 @@ class RPXProMainWindow(QMainWindow):
             source_tab="missions"))
 
     def _on_mission_failed(self, name: str):
-        session = self.data_manager.current_session
-        if not session:
+        if not self._add_chat_message(f"Mission gescheitert: {name}"):
             return
-        msg = ChatMessage(
-            role=MessageRole.SYSTEM, author="System",
-            content=f"Mission gescheitert: {name}"
-        )
-        self.chat_widget.add_message(msg)
-        session.chat_history.append(msg)
         active = self.missions_tab.get_active_missions_data()
         self._route_to_player_screen(PlayerEvent(
             event_type="mission_failed",
@@ -545,15 +507,7 @@ class RPXProMainWindow(QMainWindow):
             source_tab="missions"))
 
     def _on_item_given(self, char_name: str, item_name: str):
-        session = self.data_manager.current_session
-        if not session:
-            return
-        msg = ChatMessage(
-            role=MessageRole.SYSTEM, author="System",
-            content=f"{char_name} erhaelt: {item_name}"
-        )
-        self.chat_widget.add_message(msg)
-        session.chat_history.append(msg)
+        self._add_chat_message(f"{char_name} erhaelt: {item_name}")
 
     def _on_round_mode_changed(self, is_round_based: bool):
         self.turn_panel.setVisible(is_round_based)

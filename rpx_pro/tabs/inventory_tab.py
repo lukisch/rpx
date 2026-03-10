@@ -1,6 +1,5 @@
 """InventoryTab: Gegenstandsbibliothek, Items an Orten, NPCs an Orten."""
 
-import uuid
 import logging
 from typing import Optional
 
@@ -14,6 +13,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, Signal
 
+from rpx_pro.constants import generate_short_id
 from rpx_pro.models.entities import Item, Weapon
 
 logger = logging.getLogger("RPX")
@@ -288,7 +288,7 @@ class InventoryTab(QWidget):
                 item.strength_bonus = str_spin.value()
             else:
                 new_item = Item(
-                    id=str(uuid.uuid4())[:8],
+                    id=generate_short_id(),
                     name=name,
                     item_class=class_edit.text().strip(),
                     item_subclass=subclass_edit.text().strip(),
@@ -547,7 +547,7 @@ class InventoryTab(QWidget):
             wname = name_edit.text().strip()
             if not wname:
                 return
-            wid = str(uuid.uuid4())[:8]
+            wid = generate_short_id()
             weapon = Weapon(
                 id=wid, name=wname, description=desc_edit.text(),
                 damage_min=dmg_min_spin.value(), damage_max=dmg_max_spin.value(),

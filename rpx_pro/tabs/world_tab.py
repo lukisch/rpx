@@ -1,6 +1,5 @@
 """WorldTab: Weltverwaltung mit Multi-Map und Orten."""
 
-import uuid
 import logging
 from pathlib import Path
 from typing import Optional
@@ -14,7 +13,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, Signal
 
-from rpx_pro.constants import IMAGES_DIR, MAPS_DIR
+from rpx_pro.constants import generate_short_id, IMAGES_DIR, MAPS_DIR
 from rpx_pro.models.world import Location
 from rpx_pro.models.entities import GameMap
 from rpx_pro.widgets.map_widget import MapWidget
@@ -287,7 +286,7 @@ class WorldTab(QWidget):
             return
         name, ok = QInputDialog.getText(self, "Neuer Ort", "Name des Ortes:")
         if ok and name:
-            loc_id = str(uuid.uuid4())[:8]
+            loc_id = generate_short_id()
             location = Location(id=loc_id, name=name)
             world.locations[loc_id] = location
             self.data_manager.save_world(world)
@@ -488,7 +487,7 @@ class WorldTab(QWidget):
         name, ok = QInputDialog.getText(self, "Neue Karte", "Name der Karte:")
         if not ok or not name:
             return
-        map_id = str(uuid.uuid4())[:8]
+        map_id = generate_short_id()
         game_map = GameMap(id=map_id, name=name)
         world.maps[map_id] = game_map
         world.active_map_id = map_id

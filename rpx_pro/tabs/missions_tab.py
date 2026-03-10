@@ -1,6 +1,5 @@
 """MissionsTab: Missionsverwaltung."""
 
-import uuid
 import logging
 
 from PySide6.QtWidgets import (
@@ -10,6 +9,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Signal
 
+from rpx_pro.constants import generate_short_id
 from rpx_pro.models.enums import MissionStatus
 from rpx_pro.models.session import Mission
 
@@ -93,7 +93,7 @@ class MissionsTab(QWidget):
             return
         name, ok = QInputDialog.getText(self, "Neue Mission", "Missionsname:")
         if ok and name:
-            mission_id = str(uuid.uuid4())[:8]
+            mission_id = generate_short_id()
             mission = Mission(
                 id=mission_id,
                 name=name,

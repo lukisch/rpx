@@ -46,6 +46,7 @@ class ViewsTab(QWidget):
         self.data_manager = data_manager
         self.light_manager = light_manager
         self.audio_manager = audio_manager
+        self._ps_is_open = False
         self._setup_ui()
 
     def _setup_ui(self):
@@ -428,12 +429,11 @@ class ViewsTab(QWidget):
 
     def _toggle_player_screen(self):
         # Signal senden - MainWindow handhabt das eigentliche Oeffnen/Schliessen
-        # Aktuellen Status invertieren (Button-Text zeigt ob offen oder zu)
-        is_currently_open = "schliessen" in self.ps_toggle_btn.text().lower()
-        self.player_screen_toggled.emit(not is_currently_open)
+        self.player_screen_toggled.emit(not self._ps_is_open)
 
     def update_ps_button_state(self, is_open: bool):
         """Aktualisiert den Button-Text basierend auf dem PlayerScreen-Status."""
+        self._ps_is_open = is_open
         if is_open:
             self.ps_toggle_btn.setText("Spieler-Bildschirm schliessen")
             self.ps_toggle_btn.setStyleSheet("background-color: #c0392b; color: white; font-weight: bold; padding: 12px;")

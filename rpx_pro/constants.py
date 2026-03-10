@@ -3,6 +3,7 @@
 import sys
 import logging
 from pathlib import Path
+import uuid
 from dataclasses import fields as dataclass_fields
 
 # ============================================================================
@@ -71,6 +72,11 @@ def setup_logging():
             logging.StreamHandler()
         ]
     )
+
+
+def generate_short_id() -> str:
+    """Erzeugt eine kurze 8-Zeichen UUID."""
+    return str(uuid.uuid4())[:8]
 
 
 def _filter_dataclass_fields(cls, data: dict) -> dict:

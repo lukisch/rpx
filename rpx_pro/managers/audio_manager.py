@@ -1,12 +1,12 @@
 """AudioManager: Verwaltet Audio-Wiedergabe (Musik, Sounds, Effekte)."""
 
-import uuid
 import logging
 from pathlib import Path
 from typing import Dict, Any, Optional
 
 import rpx_pro.constants as _const
 from rpx_pro.constants import (
+    generate_short_id,
     _HAS_QMEDIAPLAYER, _HAS_PYGAME, _HAS_WINSOUND,
     MUSIC_DIR, SOUNDS_DIR,
 )
@@ -110,7 +110,7 @@ class AudioManager:
                 player.setSource(QUrl.fromLocalFile(str(path)))
                 player.play()
 
-                sound_id = str(uuid.uuid4())[:8]
+                sound_id = generate_short_id()
                 self.sound_players[sound_id] = player
                 self._sound_outputs[sound_id] = output
                 player.mediaStatusChanged.connect(

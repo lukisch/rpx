@@ -1,10 +1,10 @@
 """RPXProAPI: Programmatische Python-API fuer RPX Pro."""
 
-import uuid
 import random
 import time
 from typing import Dict, List, Optional, Any
 
+from rpx_pro.constants import generate_short_id
 from rpx_pro.models.enums import MessageRole, MissionStatus
 from rpx_pro.models.entities import Character
 from rpx_pro.models.world import World, WorldSettings
@@ -65,7 +65,7 @@ class RPXProAPI:
         session = self.dm.current_session
         if not session:
             return {"error": "Keine aktive Session"}
-        char_id = str(uuid.uuid4())[:8]
+        char_id = generate_short_id()
         char = Character(id=char_id, name=name, **kwargs)
         session.characters[char_id] = char
         self.dm.save_session(session)
@@ -155,7 +155,7 @@ class RPXProAPI:
         session = self.dm.current_session
         if not session:
             return {"error": "Keine aktive Session"}
-        mission_id = str(uuid.uuid4())[:8]
+        mission_id = generate_short_id()
         mission = Mission(id=mission_id, name=name, description=description, objective=objective)
         session.active_missions[mission_id] = mission
         self.dm.save_session(session)

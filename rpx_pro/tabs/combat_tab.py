@@ -1,7 +1,6 @@
 """CombatTab: Kampfsystem mit Wuerfeln, Angriffen, Waffen und Zaubern."""
 
 import random
-import uuid
 import logging
 
 from PySide6.QtWidgets import (
@@ -11,10 +10,13 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, Signal
 
+from rpx_pro.constants import generate_short_id
 from rpx_pro.models.entities import Weapon, Spell
 from rpx_pro.managers.dice_roller import DiceRoller
 
 logger = logging.getLogger("RPX")
+
+DEFAULT_UNARMED_CRIT_THRESHOLD = 20
 
 
 class CombatTab(QWidget):
@@ -202,7 +204,7 @@ class CombatTab(QWidget):
                     lines.append(f"KRITISCHER TREFFER! (x{weapon.critical_multiplier})")
             else:
                 base_dmg = random.randint(1, 4)
-                crit = hit_roll >= 20
+                crit = hit_roll >= DEFAULT_UNARMED_CRIT_THRESHOLD
                 if crit:
                     base_dmg *= 2
                     lines.append("KRITISCHER TREFFER! (x2)")
@@ -245,7 +247,7 @@ class CombatTab(QWidget):
             return
         name, ok = QInputDialog.getText(self, "Neue Waffe", "Name der Waffe:")
         if ok and name:
-            weapon_id = str(uuid.uuid4())[:8]
+            weapon_id = generate_short_id()
             weapon = Weapon(id=weapon_id, name=name)
             world.weapons[weapon_id] = weapon
             self.data_manager.save_world(world)
@@ -257,7 +259,7 @@ class CombatTab(QWidget):
             return
         name, ok = QInputDialog.getText(self, "Neuer Zauber", "Name des Zaubers:")
         if ok and name:
-            spell_id = str(uuid.uuid4())[:8]
+            spell_id = generate_short_id()
             spell = Spell(id=spell_id, name=name)
             world.spells[spell_id] = spell
             self.data_manager.save_world(world)

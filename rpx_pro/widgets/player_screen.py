@@ -60,6 +60,15 @@ class PlayerScreen(QMainWindow):
         self._highlight_timer.setSingleShot(True)
         self._highlight_timers: Dict[str, QTimer] = {}
 
+        # Tile-Widgets (dynamisch erstellt in _rebuild_tiles_layout)
+        self.tile_chars_list: Optional[QWidget] = None
+        self.tile_missions_list: Optional[QWidget] = None
+        self.tile_chat_text: Optional[QWidget] = None
+        self.tile_turn_order: Optional[QWidget] = None
+        self.tile_inventory_text: Optional[QWidget] = None
+        self.tile_round_label: Optional[QLabel] = None
+        self.tile_current_turn: Optional[QLabel] = None
+
         self._setup_ui()
         self._apply_theme()
 
@@ -447,15 +456,15 @@ class PlayerScreen(QMainWindow):
         self._refresh_chat_display_browser(self.rot_chat_text)
 
     def _refresh_tiles_content(self):
-        if self._enabled_views.get("characters", False) and hasattr(self, "tile_chars_list"):
+        if self._enabled_views.get("characters", False) and self.tile_chars_list is not None:
             self._refresh_char_display(self.tile_chars_list)
-        if self._enabled_views.get("missions", False) and hasattr(self, "tile_missions_list"):
+        if self._enabled_views.get("missions", False) and self.tile_missions_list is not None:
             self._refresh_missions_display(self.tile_missions_list)
-        if self._enabled_views.get("chat", False) and hasattr(self, "tile_chat_text"):
+        if self._enabled_views.get("chat", False) and self.tile_chat_text is not None:
             self._refresh_chat_display_browser(self.tile_chat_text)
-        if self._enabled_views.get("turns", False) and hasattr(self, "tile_turn_order"):
+        if self._enabled_views.get("turns", False) and self.tile_turn_order is not None:
             self._refresh_turn_display()
-        if self._enabled_views.get("inventory", False) and hasattr(self, "tile_inventory_text"):
+        if self._enabled_views.get("inventory", False) and self.tile_inventory_text is not None:
             self._refresh_inventory_display()
 
     # --- Common content refresh ---
@@ -585,7 +594,7 @@ class PlayerScreen(QMainWindow):
         browser.setHtml(html)
 
     def _refresh_turn_display(self):
-        if not hasattr(self, "tile_round_label"):
+        if self.tile_round_label is None:
             return
         info = self._turn_info
         self.tile_round_label.setText(f"Runde: {info.get('round', '-')}")

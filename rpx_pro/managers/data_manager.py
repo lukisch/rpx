@@ -2,11 +2,11 @@
 
 import json
 import time
-import uuid
 import logging
 from typing import Dict, Optional, Any
 
 from rpx_pro.constants import (
+    generate_short_id,
     CONFIG_FILE, WORLDS_DIR, SESSIONS_DIR, BACKUPS_DIR,
 )
 from rpx_pro.models.world import World, WorldSettings
@@ -118,7 +118,7 @@ class DataManager:
 
     def create_world(self, name: str, genre: str = "Fantasy") -> World:
         """Erstellt eine neue Welt"""
-        world_id = str(uuid.uuid4())[:8]
+        world_id = generate_short_id()
         settings = WorldSettings(name=name, genre=genre)
         world = World(id=world_id, settings=settings)
         self.save_world(world)
@@ -129,7 +129,7 @@ class DataManager:
         if world_id not in self.worlds:
             logger.error(f"Welt {world_id} nicht gefunden")
             return None
-        session_id = str(uuid.uuid4())[:8]
+        session_id = generate_short_id()
         session = Session(id=session_id, world_id=world_id, name=name)
         self.save_session(session)
         return session

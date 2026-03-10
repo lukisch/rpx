@@ -19,6 +19,7 @@ class LightEffectManager(QObject):
         self.overlay: Optional[QWidget] = None
         self.effect_timer: Optional[QTimer] = None
         self.current_effect = ""
+        self._sequence_id = 0
 
     def set_target(self, widget: QWidget):
         """Setzt das Ziel-Widget fuer Effekte"""
@@ -101,7 +102,7 @@ class LightEffectManager(QObject):
         if not self.overlay or not sequence:
             return
 
-        self._sequence_id = getattr(self, '_sequence_id', 0) + 1
+        self._sequence_id += 1
         current_seq = self._sequence_id
         self.overlay.show()
 

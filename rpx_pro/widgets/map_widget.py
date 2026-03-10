@@ -1,6 +1,5 @@
 """MapWidget: Interaktive Kartenansicht mit verschiebbaren Markern und Zeichenwerkzeugen."""
 
-import uuid
 from pathlib import Path
 from typing import Dict, Any, Optional, Tuple
 
@@ -15,6 +14,7 @@ from PySide6.QtWidgets import (
     QGraphicsPixmapItem,
 )
 
+from rpx_pro.constants import generate_short_id
 from rpx_pro.models.entities import MapElement
 
 
@@ -253,7 +253,7 @@ class MapWidget(QWidget):
         menu.exec(self.view.mapToGlobal(pos))
 
     def add_element(self, element_type: str, pos: QPointF) -> str:
-        elem_id = str(uuid.uuid4())[:8]
+        elem_id = generate_short_id()
         color = QColor("#e67e22")
         item = None
 
@@ -311,7 +311,7 @@ class MapWidget(QWidget):
             "Bilder (*.png *.jpg *.jpeg *.bmp *.gif)")
         if not path:
             return
-        elem_id = str(uuid.uuid4())[:8]
+        elem_id = generate_short_id()
         pixmap = QPixmap(path)
         if pixmap.width() > 300:
             pixmap = pixmap.scaledToWidth(300, Qt.SmoothTransformation)

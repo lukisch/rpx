@@ -1,6 +1,5 @@
 """CharactersTab: Charakterverwaltung mit HP/Mana-Steuerung."""
 
-import uuid
 import logging
 from functools import partial
 from pathlib import Path
@@ -16,7 +15,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QPixmap
 
-from rpx_pro.constants import IMAGES_DIR
+from rpx_pro.constants import generate_short_id, IMAGES_DIR
 from rpx_pro.models.entities import Character
 from rpx_pro.widgets.inventory_dialog import CharacterInventoryDialog
 
@@ -152,7 +151,7 @@ class CharactersTab(QWidget):
     def create_character(self):
         name, ok = QInputDialog.getText(self, "Neuer Charakter", "Name:")
         if ok and name:
-            char_id = str(uuid.uuid4())[:8]
+            char_id = generate_short_id()
             character = Character(id=char_id, name=name)
             session = self.data_manager.current_session
             if session:

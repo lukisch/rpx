@@ -1,10 +1,9 @@
 """Welt-Datenmodelle: Location, WorldSettings, World."""
 
-import uuid
 from dataclasses import dataclass, field, asdict
 from typing import Dict, List, Optional, Any, Tuple
 
-from rpx_pro.constants import _filter_dataclass_fields
+from rpx_pro.constants import generate_short_id, _filter_dataclass_fields
 from rpx_pro.models.entities import (
     Trigger, Weapon, Armor, CombatTechnique, Spell, Item, Vehicle,
     RoadType, Nation, Race, DiceRule, GameMap,
@@ -161,7 +160,7 @@ class World:
         map_image = data.get('map_image')
         # Migration: altes map_image -> neue GameMap
         if map_image and not maps:
-            migrate_id = str(uuid.uuid4())[:8]
+            migrate_id = generate_short_id()
             maps[migrate_id] = GameMap(id=migrate_id, name="Weltkarte", background_image=map_image)
             active_map_id = migrate_id
         return cls(
