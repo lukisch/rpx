@@ -255,9 +255,9 @@ rpx_pro_data/
 
 ## Lizenz
 
-AGPL-3.0 - siehe [LICENSE](LICENSE).
+MIT License - siehe [LICENSE](LICENSE).
 
-RPX ist freie Software: Du kannst es unter den Bedingungen der GNU Affero General Public License (Version 3 oder spaeter) weitergeben und/oder modifizieren. Fuer kommerzielle Nutzung ohne Copyleft-Pflicht kontaktiere den Autor.
+RPX Pro ist freie Software unter der MIT-Lizenz. Du kannst es frei verwenden, modifizieren und weitergeben, auch fuer kommerzielle Projekte.
 
 Die Regelwerk-Templates enthalten nur generische Spielmechaniken. D&D-Inhalte basieren auf dem SRD 5.1 (OGL). DSA-Inhalte sind abstrahiert und enthalten keine geschuetzten Texte.
 
