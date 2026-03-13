@@ -134,9 +134,11 @@ class AudioManager:
         try:
             from PySide6.QtMultimedia import QMediaPlayer as _QMP
             end_status = _QMP.MediaStatus.EndOfMedia
+            invalid_status = _QMP.MediaStatus.InvalidMedia
         except (ImportError, AttributeError):
             end_status = 7
-        if status == end_status:
+            invalid_status = 6
+        if status in (end_status, invalid_status):
             player = self.sound_players.pop(sound_id, None)
             output = self._sound_outputs.pop(sound_id, None)
             if player:

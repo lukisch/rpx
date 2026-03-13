@@ -36,8 +36,8 @@ class RulesetImporter:
                         "name": data.get("ruleset_name", path.stem),
                         "description": data.get("description", ""),
                     })
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning(f"Regelwerk-Datei konnte nicht geladen werden: {path} -- {e}")
         return rulesets
 
     @staticmethod

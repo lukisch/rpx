@@ -130,6 +130,7 @@ def _init_audio_backend():
         try:
             _test = QMediaPlayer()
             available = getattr(_test, 'isAvailable', lambda: True)()
+            _test.deleteLater()
             if available:
                 HAS_AUDIO = True
                 AUDIO_BACKEND = "QtMultimedia"
