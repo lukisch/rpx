@@ -1,0 +1,338 @@
+{
+  "ruleset_id": "dsa5",
+  "ruleset_name": "DSA 5 (Abstrahiert)",
+  "version": "1.0",
+  "description": "Das Schwarze Auge -- abstrahierte Spielmechaniken fuer RPX. Keine offiziellen Texte.",
+
+  "attributes": {
+    "primary": ["Mut", "Klugheit", "Intuition", "Charisma", "Fingerfertigkeit", "Gewandtheit", "Konstitution", "Koerperkraft"],
+    "abbreviations": {"Mut": "MU", "Klugheit": "KL", "Intuition": "IN", "Charisma": "CH", "Fingerfertigkeit": "FF", "Gewandtheit": "GE", "Konstitution": "KO", "Koerperkraft": "KK"}
+  },
+
+  "races": {
+    "mensch": {
+      "name": "Mensch",
+      "description": "Das verbreitetste Volk Aventuriens. Vielseitig und anpassungsfaehig.",
+      "abilities": ["Vielseitigkeit"],
+      "strengths": ["Anpassungsfaehigkeit"],
+      "weaknesses": [],
+      "hunger_modifier": 1.0, "thirst_modifier": 1.0
+    },
+    "elf": {
+      "name": "Elf",
+      "description": "Naturverbundene, langlebige Wesen mit Verbindung zur Magie.",
+      "abilities": ["Dunkelsicht", "Natuerliche Magiebegabung", "Trance statt Schlaf"],
+      "strengths": ["Magie", "Wahrnehmung", "Naturverbundenheit"],
+      "weaknesses": ["Empfindlich gegen Eisen", "Distanz zu Zivilisation"],
+      "hunger_modifier": 0.7, "thirst_modifier": 0.8
+    },
+    "halbelf": {
+      "name": "Halbelf",
+      "description": "Kinder zweier Welten, verbinden menschliche und elfische Zuege.",
+      "abilities": ["Schwache Dunkelsicht"],
+      "strengths": ["Vielseitigkeit", "Diplomatie"],
+      "weaknesses": [],
+      "hunger_modifier": 0.9, "thirst_modifier": 0.9
+    },
+    "zwerg": {
+      "name": "Zwerg",
+      "description": "Zaeher Bergbewohner, meisterlicher Handwerker und Minenarbeiter.",
+      "abilities": ["Dunkelsicht", "Giftresistenz", "Zwergennase (Erze erkennen)"],
+      "strengths": ["Zaehigkeit", "Handwerk", "Kampf"],
+      "weaknesses": ["Wasserscheu", "Raumangst in der Weite"],
+      "hunger_modifier": 1.2, "thirst_modifier": 1.3
+    },
+    "ork": {
+      "name": "Ork",
+      "description": "Kriegerisches Volk des Nordens, brutal aber ehrenhaft.",
+      "abilities": ["Kampfrausch", "Zaehigkeit"],
+      "strengths": ["Koerperkraft", "Ausdauer"],
+      "weaknesses": ["Jähzorn", "Geringe Impulskontrolle"],
+      "hunger_modifier": 1.5, "thirst_modifier": 1.3
+    },
+    "goblin": {
+      "name": "Goblin",
+      "description": "Kleines, listiges Volk mit erstaunlicher Ueberlebensfaehigkeit.",
+      "abilities": ["Dunkelsicht", "Geringe Groesse"],
+      "strengths": ["Heimlichkeit", "Fallen stellen"],
+      "weaknesses": ["Geringe Koerperkraft", "Kleine Statur"],
+      "hunger_modifier": 0.6, "thirst_modifier": 0.6
+    },
+    "achaz": {
+      "name": "Achaz",
+      "description": "Echsenartiges Volk aus den Suempfen und Dschungeln.",
+      "abilities": ["Waermesicht", "Regeneration", "Schwimmen"],
+      "strengths": ["Zaehigkeit", "Anpassung an Hitze"],
+      "weaknesses": ["Kaelteempfindlich", "Langsam bei Kaelte"],
+      "hunger_modifier": 0.8, "thirst_modifier": 1.0
+    },
+    "thorwaler": {
+      "name": "Thorwaler",
+      "description": "Seefahrervolk des Nordens, mutig und abenteuerlustig.",
+      "abilities": ["Seetuechtig", "Kaltbluetig"],
+      "strengths": ["Seefahrt", "Mut", "Ausdauer"],
+      "weaknesses": [],
+      "hunger_modifier": 1.1, "thirst_modifier": 1.0
+    },
+    "norbarde": {
+      "name": "Norbarde",
+      "description": "Nomadisches Volk der noerdlichen Steppen.",
+      "abilities": ["Orientierungssinn", "Reiten"],
+      "strengths": ["Ueberleben in der Wildnis", "Reiten"],
+      "weaknesses": [],
+      "hunger_modifier": 0.9, "thirst_modifier": 0.9
+    },
+    "nivese": {
+      "name": "Nivese",
+      "description": "Volk des ewigen Eises, an extreme Kaelte angepasst.",
+      "abilities": ["Kaelteresistenz", "Spurenlesen"],
+      "strengths": ["Ueberlebenskunst", "Tierverbundenheit"],
+      "weaknesses": ["Hitzeempfindlich"],
+      "hunger_modifier": 1.0, "thirst_modifier": 0.8
+    },
+    "waldmensch": {
+      "name": "Waldmensch",
+      "description": "Naturvolk der tiefen Waelder mit schamanischer Tradition.",
+      "abilities": ["Naturkunde", "Pflanzenwissen"],
+      "strengths": ["Ueberleben im Wald", "Heilkunde"],
+      "weaknesses": ["Fremd in Staedten"],
+      "hunger_modifier": 0.8, "thirst_modifier": 0.8
+    },
+    "fjarninger": {
+      "name": "Fjarninger",
+      "description": "Kriegerisches Bergvolk des hohen Nordens.",
+      "abilities": ["Kaelteresistenz", "Bergsteigen"],
+      "strengths": ["Kampf", "Ausdauer"],
+      "weaknesses": [],
+      "hunger_modifier": 1.2, "thirst_modifier": 1.0
+    }
+  },
+
+  "professions": [
+    "Krieger", "Jaeger", "Streuner", "Magier", "Geweihter",
+    "Alchimist", "Haendler", "Heiler", "Barde"
+  ],
+
+  "weapons": {
+    "dolch": {
+      "name": "Dolch", "damage_min": 1, "damage_max": 4, "damage_avg": 2,
+      "damage_type": "physical", "accuracy": 0.9,
+      "required_strength": 0, "required_level": 1,
+      "description": "1W6 TP, Nahkampf, kurze Reichweite."
+    },
+    "kurzschwert": {
+      "name": "Kurzschwert", "damage_min": 1, "damage_max": 6, "damage_avg": 3,
+      "damage_type": "physical", "accuracy": 0.85,
+      "required_strength": 5, "required_level": 1,
+      "description": "1W6+1 TP, Nahkampf."
+    },
+    "schwert": {
+      "name": "Schwert", "damage_min": 2, "damage_max": 7, "damage_avg": 4,
+      "damage_type": "physical", "accuracy": 0.8,
+      "required_strength": 10, "required_level": 1,
+      "description": "1W6+2 TP, Nahkampf."
+    },
+    "zweihander": {
+      "name": "Zweihaender", "damage_min": 3, "damage_max": 10, "damage_avg": 6,
+      "damage_type": "physical", "accuracy": 0.7,
+      "required_strength": 14, "required_level": 3,
+      "description": "2W6+2 TP, Zweihandwaffe."
+    },
+    "streitaxt": {
+      "name": "Streitaxt", "damage_min": 2, "damage_max": 8, "damage_avg": 5,
+      "damage_type": "physical", "accuracy": 0.75,
+      "required_strength": 12, "required_level": 2,
+      "description": "1W6+3 TP, Nahkampf."
+    },
+    "streitkolben": {
+      "name": "Streitkolben", "damage_min": 2, "damage_max": 8, "damage_avg": 5,
+      "damage_type": "physical", "accuracy": 0.8,
+      "required_strength": 10, "required_level": 1,
+      "description": "1W6+3 TP, Wuchtwaffe."
+    },
+    "speer": {
+      "name": "Speer", "damage_min": 1, "damage_max": 8, "damage_avg": 4,
+      "damage_type": "physical", "accuracy": 0.8,
+      "required_strength": 8, "required_level": 1,
+      "description": "1W6+2 TP, auch als Wurfwaffe nutzbar."
+    },
+    "langbogen": {
+      "name": "Langbogen", "damage_min": 2, "damage_max": 8, "damage_avg": 5,
+      "damage_type": "physical", "accuracy": 0.7,
+      "required_strength": 10, "required_level": 2,
+      "description": "1W6+3 TP Fernkampf, grosse Reichweite."
+    },
+    "kurzbogen": {
+      "name": "Kurzbogen", "damage_min": 1, "damage_max": 6, "damage_avg": 3,
+      "damage_type": "physical", "accuracy": 0.75,
+      "required_strength": 6, "required_level": 1,
+      "description": "1W6+1 TP Fernkampf."
+    },
+    "armbrust": {
+      "name": "Armbrust", "damage_min": 2, "damage_max": 10, "damage_avg": 6,
+      "damage_type": "physical", "accuracy": 0.8,
+      "required_strength": 8, "required_level": 1,
+      "description": "1W6+4 TP Fernkampf, langsame Nachladezeit."
+    },
+    "rapier": {
+      "name": "Rapier", "damage_min": 1, "damage_max": 7, "damage_avg": 4,
+      "damage_type": "physical", "accuracy": 0.85,
+      "required_strength": 6, "required_level": 1,
+      "description": "1W6+2 TP, elegante Fechtwaffe."
+    },
+    "hellebarde": {
+      "name": "Hellebarde", "damage_min": 2, "damage_max": 10, "damage_avg": 6,
+      "damage_type": "physical", "accuracy": 0.7,
+      "required_strength": 14, "required_level": 2,
+      "description": "1W6+4 TP, lange Reichweite, Zweihandwaffe."
+    },
+    "kampfstab": {
+      "name": "Kampfstab", "damage_min": 1, "damage_max": 6, "damage_avg": 3,
+      "damage_type": "physical", "accuracy": 0.85,
+      "required_strength": 5, "required_level": 1,
+      "description": "1W6+1 TP, Zweihandwaffe fuer Magier."
+    },
+    "wurfmesser": {
+      "name": "Wurfmesser", "damage_min": 1, "damage_max": 4, "damage_avg": 2,
+      "damage_type": "physical", "accuracy": 0.8,
+      "required_strength": 3, "required_level": 1,
+      "description": "1W6 TP Fernkampf, kurze Reichweite."
+    },
+    "kettenwaffe": {
+      "name": "Kettenkugel", "damage_min": 2, "damage_max": 9, "damage_avg": 5,
+      "damage_type": "physical", "accuracy": 0.7,
+      "required_strength": 12, "required_level": 3,
+      "description": "1W6+3 TP, kann Schilde umgehen."
+    }
+  },
+
+  "armors": {
+    "stoffruestung": {
+      "name": "Stoffruestung", "protection_min": 1, "protection_max": 1, "protection_avg": 1,
+      "reliability": 0.95, "description": "RS 1, keine Behinderung."
+    },
+    "lederruestung": {
+      "name": "Lederruestung", "protection_min": 2, "protection_max": 3, "protection_avg": 2,
+      "reliability": 0.9, "description": "RS 2-3, leichte Behinderung."
+    },
+    "kettenhemd": {
+      "name": "Kettenhemd", "protection_min": 3, "protection_max": 5, "protection_avg": 4,
+      "reliability": 0.85, "description": "RS 3-5, mittlere Behinderung."
+    },
+    "schuppenpanzer": {
+      "name": "Schuppenpanzer", "protection_min": 4, "protection_max": 6, "protection_avg": 5,
+      "reliability": 0.85, "description": "RS 4-6, mittlere Behinderung."
+    },
+    "plattenpanzer": {
+      "name": "Plattenpanzer", "protection_min": 6, "protection_max": 8, "protection_avg": 7,
+      "reliability": 0.8, "description": "RS 6-8, hohe Behinderung."
+    },
+    "schild_holz": {
+      "name": "Holzschild", "protection_min": 1, "protection_max": 2, "protection_avg": 1,
+      "reliability": 0.9, "description": "Paradewaffe +1-2."
+    },
+    "schild_metall": {
+      "name": "Metallschild", "protection_min": 2, "protection_max": 3, "protection_avg": 2,
+      "reliability": 0.95, "description": "Paradewaffe +2-3."
+    }
+  },
+
+  "spells": {
+    "ignifaxius": {
+      "name": "Ignifaxius", "effect_type": "damage", "effect_value": 14,
+      "target_type": "single_enemy", "mana_cost": 8, "required_level": 2, "required_intelligence": 10,
+      "description": "Feuerstrahl, 2W6+2 Schaden."
+    },
+    "fulminictus": {
+      "name": "Fulminictus", "effect_type": "damage", "effect_value": 18,
+      "target_type": "single_enemy", "mana_cost": 12, "required_level": 4, "required_intelligence": 12,
+      "description": "Blitzstrahl, 2W6+4 Schaden."
+    },
+    "balsam": {
+      "name": "Balsam Salabunde", "effect_type": "heal", "effect_value": 10,
+      "target_type": "single_ally", "mana_cost": 7, "required_level": 1, "required_intelligence": 8,
+      "description": "Heilt 1W6+3 Lebenspunkte."
+    },
+    "gardianum": {
+      "name": "Gardianum", "effect_type": "buff", "effect_value": 5,
+      "target_type": "self", "mana_cost": 8, "required_level": 2, "required_intelligence": 10,
+      "description": "Magischer Schutzschild, RS +5 gegen Magie."
+    },
+    "duplicatus": {
+      "name": "Duplicatus", "effect_type": "buff", "effect_value": 0,
+      "target_type": "self", "mana_cost": 10, "required_level": 4, "required_intelligence": 12,
+      "description": "Erzeugt ein Trugbild des Zauberers."
+    },
+    "horriphobus": {
+      "name": "Horriphobus", "effect_type": "debuff", "effect_value": 0,
+      "target_type": "single_enemy", "mana_cost": 6, "required_level": 2, "required_intelligence": 10,
+      "description": "Versetzt das Ziel in Furcht."
+    },
+    "visibili": {
+      "name": "Visibili", "effect_type": "buff", "effect_value": 0,
+      "target_type": "self", "mana_cost": 14, "required_level": 5, "required_intelligence": 14,
+      "description": "Macht den Zauberer unsichtbar."
+    },
+    "flim_flam": {
+      "name": "Flim Flam", "effect_type": "damage", "effect_value": 3,
+      "target_type": "single_enemy", "mana_cost": 2, "required_level": 1, "required_intelligence": 6,
+      "description": "Kleiner Funkenregen, 1W6 Schaden."
+    },
+    "armatrutz": {
+      "name": "Armatrutz", "effect_type": "buff", "effect_value": 3,
+      "target_type": "self", "mana_cost": 6, "required_level": 2, "required_intelligence": 10,
+      "description": "Erhoeht Ruestungsschutz um 3 fuer 5 Kampfrunden."
+    },
+    "bannbaladin": {
+      "name": "Bannbaladin", "effect_type": "debuff", "effect_value": 0,
+      "target_type": "single_enemy", "mana_cost": 5, "required_level": 1, "required_intelligence": 8,
+      "description": "Laesst das Ziel unkontrolliert tanzen."
+    },
+    "aerofugo": {
+      "name": "Aerofugo Vakuum", "effect_type": "damage", "effect_value": 12,
+      "target_type": "area", "mana_cost": 10, "required_level": 4, "required_intelligence": 12,
+      "description": "Entzieht einem Gebiet die Luft, 2W6 Schaden pro Runde."
+    },
+    "respondami": {
+      "name": "Respondami", "effect_type": "manipulation", "effect_value": 0,
+      "target_type": "single_enemy", "mana_cost": 8, "required_level": 3, "required_intelligence": 12,
+      "description": "Zwingt das Ziel, wahrheitsgemaess zu antworten."
+    }
+  },
+
+  "dice_rules": {
+    "talentprobe": {
+      "name": "Talentprobe (3W20)",
+      "dice_count": 3, "dice_sides": 20,
+      "ranges": {
+        "Meisterlich": [1, 1],
+        "Gelungen": [2, 20],
+        "Patzer": [20, 20]
+      },
+      "description": "3 Wuerfe gegen 3 Attribute. Jeder Wurf muss <= Attributwert sein. Talentpunkte gleichen aus."
+    },
+    "eigenschaftsprobe": {
+      "name": "Eigenschaftsprobe (1W20)",
+      "dice_count": 1, "dice_sides": 20,
+      "ranges": {
+        "Meisterlich": [1, 1],
+        "Erfolg": [2, 12],
+        "Knapp": [13, 17],
+        "Misserfolg": [18, 19],
+        "Patzer": [20, 20]
+      },
+      "description": "1W20 <= Eigenschaftswert = Erfolg"
+    },
+    "angriff": {
+      "name": "Angriffsprobe",
+      "dice_count": 1, "dice_sides": 20,
+      "ranges": {
+        "Kritischer Treffer": [1, 1],
+        "Treffer": [2, 15],
+        "Verfehlt": [16, 19],
+        "Patzer": [20, 20]
+      },
+      "description": "1W20 <= Attacke-Wert. Bestaetigung bei 1 und 20 mit erneutem Wurf."
+    }
+  }
+}
