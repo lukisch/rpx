@@ -25,6 +25,15 @@ Desktop.ini
 # Logs
 *.log
 
+# Test / cache output
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage*
+htmlcov/
+TEST.txt
+TESTS.txt
+
 # User Data (Struktur bleibt, Inhalte sind nutzerspezifisch)
 rpx_pro_data/worlds/*.json
 rpx_pro_data/sessions/*.json
@@ -52,6 +61,24 @@ Archiv/
 ultimate_rpg_project/
 releases/
 rpx_light_data/
+_WARTUNG/
+
+# Lokale Secrets und private Sidecars
+.env
+.env.*
+!.env.example
+secrets/
+credentials*.json
+token*.json
+*.key
+*.pem
+*.p12
+*.pfx
+*.db
+*.sqlite
+*.sqlite3
+*_private/
+_private/
 
 # Excel-Arbeitsdateien
 *.xlsx
@@ -59,3 +86,10 @@ rpx_light_data/
 # PyInstaller Output
 *.manifest
 *.spec.bak
+*.tmp
+*.bak
+*.exe
+*.dll
+*.pyd
+*.msix
+*.appx

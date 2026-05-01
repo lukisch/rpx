@@ -2,112 +2,80 @@
 
 ## Deutsch
 
-Vielen Dank fuer Ihr Interesse, zu diesem Projekt beizutragen!
+Vielen Dank für Ihr Interesse, zu RPX Pro beizutragen.
 
-### Wie Sie beitragen koennen
+### Wie Sie beitragen können
 
-1. **Bug melden:** Erstellen Sie ein Issue mit dem Label `bug`
-2. **Feature vorschlagen:** Erstellen Sie ein Issue mit dem Label `enhancement`
-3. **Code beitragen:** Erstellen Sie einen Pull Request
+1. **Bug melden:** Erstellen Sie ein Issue mit dem Label `bug`.
+2. **Feature vorschlagen:** Erstellen Sie ein Issue mit dem Label `enhancement`.
+3. **Code beitragen:** Erstellen Sie einen Pull Request gegen `master`.
 
 ### Pull Requests
 
-1. Forken Sie das Repository
+1. Forken Sie das Repository: https://github.com/entertain-and-more/rpx
 2. Erstellen Sie einen Feature-Branch: `git checkout -b feature/mein-feature`
-3. Committen Sie Ihre Aenderungen: `git commit -m "Beschreibung der Aenderung"`
+3. Committen Sie Ihre Änderungen: `git commit -m "Beschreibung der Änderung"`
 4. Pushen Sie den Branch: `git push origin feature/mein-feature`
-5. Erstellen Sie einen Pull Request
+5. Erstellen Sie einen Pull Request.
 
-### Contributor License Agreement (CLA)
+### Lizenzierung
 
-<!-- OPTION A: Fuer Projekte mit Dual-Licensing (RPX, etc.) -- diesen Block verwenden -->
-Dieses Projekt verwendet ein [Contributor License Agreement (CLA)](CLA.md).
-Bei Ihrem ersten Pull Request bestaetigen Sie bitte Ihre Zustimmung durch einen Kommentar:
-
-> I have read and agree to the Contributor License Agreement (CLA).
-
-Sie behalten Ihr Urheberrecht -- das CLA raeumt dem Projektinhaber lediglich Nutzungsrechte ein, die eine flexible Lizenzierung des Gesamtprojekts ermoeglichen.
-
-<!-- OPTION B: Fuer Community-Projekte ohne kommerzielle Plaene -- diesen Block stattdessen verwenden
-### Developer Certificate of Origin (DCO)
-
-Dieses Projekt verwendet den [Developer Certificate of Origin (DCO)](https://developercertificate.org/).
-Bitte signieren Sie jeden Commit mit `--signoff`:
-
-    git commit --signoff -m "Beschreibung der Aenderung"
-
-Damit bestaetigen Sie, dass Sie das Recht haben, den Code unter der Projektlizenz einzureichen.
--->
+Dieses Projekt steht unter der MIT-Lizenz. Mit einem Pull Request bestätigen Sie, dass Sie das Recht haben, Ihre Änderungen unter der MIT-Lizenz einzureichen. Ein separates CLA-Dokument ist aktuell nicht erforderlich.
 
 ### Code-Richtlinien
 
 - Python: PEP 8 Stil
-- Encoding: UTF-8 fuer alle Dateien
+- Encoding: UTF-8 für alle Textdateien
 - Sprache: Code und Kommentare auf Deutsch oder Englisch
-- Keine hardcoded Pfade oder API-Keys
+- Keine hardcoded lokalen Pfade, privaten Daten oder API-Keys
+- Nutzerdaten bleiben in `rpx_pro_data/` und werden nicht eingecheckt
 
 ### Erste Schritte
 
 ```bash
-git clone https://github.com/lukisch/REL_RPG.git
-cd REL_RPG
+git clone https://github.com/entertain-and-more/rpx.git
+cd rpx
 pip install -r requirements.txt
-python main.py
+python RPX_Pro_1.py
 ```
 
 ---
 
 ## English
 
-Thank you for your interest in contributing to this project!
+Thank you for your interest in contributing to RPX Pro.
 
 ### How to Contribute
 
-1. **Report bugs:** Create an issue with the `bug` label
-2. **Suggest features:** Create an issue with the `enhancement` label
-3. **Contribute code:** Create a Pull Request
+1. **Report bugs:** Create an issue with the `bug` label.
+2. **Suggest features:** Create an issue with the `enhancement` label.
+3. **Contribute code:** Open a pull request against `master`.
 
 ### Pull Requests
 
-1. Fork the repository
+1. Fork the repository: https://github.com/entertain-and-more/rpx
 2. Create a feature branch: `git checkout -b feature/my-feature`
 3. Commit your changes: `git commit -m "Description of change"`
 4. Push the branch: `git push origin feature/my-feature`
-5. Create a Pull Request
+5. Open a pull request.
 
-### Contributor License Agreement (CLA)
+### Licensing
 
-<!-- OPTION A: For projects with dual licensing (RPX, etc.) -->
-This project uses a [Contributor License Agreement (CLA)](CLA.md).
-On your first pull request, please confirm your agreement by commenting:
-
-> I have read and agree to the Contributor License Agreement (CLA).
-
-You retain your copyright -- the CLA only grants the project owner usage rights that enable flexible licensing of the overall project.
-
-<!-- OPTION B: For community projects without commercial plans
-### Developer Certificate of Origin (DCO)
-
-This project uses the [Developer Certificate of Origin (DCO)](https://developercertificate.org/).
-Please sign off every commit with `--signoff`:
-
-    git commit --signoff -m "Description of change"
-
-This certifies that you have the right to submit the code under the project license.
--->
+This project is licensed under the MIT License. By submitting a pull request, you confirm that you have the right to submit your changes under the MIT License. A separate CLA document is not currently required.
 
 ### Code Guidelines
 
 - Python: PEP 8 style
-- Encoding: UTF-8 for all files
+- Encoding: UTF-8 for all text files
 - Language: Code and comments in German or English
-- No hardcoded paths or API keys
+- No hardcoded local paths, private data, or API keys
+- User data stays in `rpx_pro_data/` and must not be committed
 
 ### Getting Started
 
 ```bash
-git clone https://github.com/lukisch/REL_RPG.git
-cd REL_RPG
+git clone https://github.com/entertain-and-more/rpx.git
+cd rpx
 pip install -r requirements.txt
-python main.py
+python RPX_Pro_1.py
 ```

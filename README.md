@@ -2,6 +2,10 @@
 
 Ein professionelles Rollenspiel-Kontrollzentrum fuer Pen & Paper Abenteuer. Offline-faehig, kostenlos, Open Source.
 
+![RPX Pro Hauptfenster](README/screenshots/main.png)
+
+**Repository:** https://github.com/entertain-and-more/rpx
+
 ## Features
 
 | Feature | Beschreibung |
@@ -37,6 +41,18 @@ Oder unter Windows: `START.bat` doppelklicken.
 - Python 3.10+
 - PySide6 (Qt6) - beinhaltet Qt Multimedia fuer Audio
 - pygame (optional, Audio-Fallback)
+
+## EXE-Build
+
+```bash
+build_exe.bat
+
+# oder direkt
+python -m PyInstaller --noconfirm --clean RPX_Pro.spec
+```
+
+Die Build-Ausgabe landet in `dist/RPX_Pro/`. Das Spec-File bindet die `rulesets/` mit ein; Laufzeitdaten bleiben weiterhin in `rpx_pro_data/`.
+`build/`, `dist/`, `releases/` und `_WARTUNG/` sind lokale Build-/Staging-Verzeichnisse und werden nicht versioniert.
 
 ## Schnellstart
 
@@ -230,6 +246,10 @@ rpx_pro_data/
   backups/             # Auto-Backups
 ```
 
+## Datenschutz und lokale Daten
+
+RPX Pro arbeitet lokal. Spielwelten, Sessions, Medien, Konfigurationen und Backups bleiben in `rpx_pro_data/` auf dem Gerät und sind über `.gitignore` vom Repository ausgeschlossen. Die KI-Integration erzeugt Prompts zur Weiterverwendung in einem externen Tool; RPX Pro überträgt diese Inhalte nicht selbst an externe Dienste.
+
 ## Tastenkuerzel
 
 | Kuerzel | Aktion |
@@ -278,8 +298,8 @@ A professional role-playing game control center with world systems, soundboard, 
 ### Installation
 
 ```bash
-git clone https://github.com/lukisch/REL_RPG.git
-cd REL_RPG
+git clone https://github.com/entertain-and-more/rpx.git
+cd rpx
 pip install -r requirements.txt
 python "RPX_Pro_1.py"
 ```
@@ -292,9 +312,9 @@ See [LICENSE](LICENSE) for details.
 
 ## Haftung / Liability
 
-Dieses Projekt ist eine **unentgeltliche Open-Source-Schenkung** im Sinne der §§ 516 ff. BGB. Die Haftung des Urhebers ist gemäß **§ 521 BGB** auf **Vorsatz und grobe Fahrlässigkeit** beschränkt. Ergänzend gelten die Haftungsausschlüsse aus GPL-3.0 / MIT / Apache-2.0 §§ 15–16 (je nach gewählter Lizenz).
+Dieses Projekt ist eine **unentgeltliche Open-Source-Schenkung** im Sinne der §§ 516 ff. BGB. Die Haftung des Urhebers ist gemäß **§ 521 BGB** auf **Vorsatz und grobe Fahrlässigkeit** beschränkt. Ergänzend gilt der Haftungsausschluss der MIT-Lizenz.
 
 Nutzung auf eigenes Risiko. Keine Wartungszusage, keine Verfügbarkeitsgarantie, keine Gewähr für Fehlerfreiheit oder Eignung für einen bestimmten Zweck.
 
-This project is an unpaid open-source donation. Liability is limited to intent and gross negligence (§ 521 German Civil Code). Use at your own risk. No warranty, no maintenance guarantee, no fitness-for-purpose assumed.
+This project is an unpaid open-source donation. Liability is limited to intent and gross negligence (§ 521 German Civil Code). Use at your own risk. No warranty, no maintenance guarantee, no fitness-for-purpose assumed. The MIT License disclaimer also applies.
 
